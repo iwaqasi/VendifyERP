@@ -239,6 +239,11 @@ class SellController extends BaseApiController
             }
 
             // Create transaction
+            // Note: column names must match the actual DB schema:
+            //   transactions.tax_amount (not 'tax'),
+            //   transactions.staff_note (not 'sale_note'),
+            //   transactions.res_table_id (not 'table_id')
+            //   amount_paid/amount_remaining are computed from transaction_payments, not stored
             $transaction = Transaction::create([
                 'business_id' => $business_id,
                 'location_id' => $request->location_id,
@@ -250,19 +255,17 @@ class SellController extends BaseApiController
                 'ref_no' => $request->input('ref_no'),
                 'transaction_date' => now(),
                 'total_before_tax' => $total_before_tax,
-                'tax' => $total_tax,
+                'tax_amount' => $total_tax,
                 'final_total' => $final_total,
-                'amount_paid' => $total_paid,
-                'amount_remaining' => $amount_remaining,
                 'payment_status' => $payment_status,
                 'discount_type' => $request->discount_type ?? 'fixed',
                 'discount_amount' => $discount,
                 'shipping_charges' => $shipping,
                 'additional_notes' => $request->additional_notes,
-                'sale_note' => $request->sale_note,
+                'staff_note' => $request->sale_note,
                 'created_by' => $user_id,
                 'types_of_service_id' => $request->types_of_service_id,
-                'table_id' => $request->table_id,
+                'res_table_id' => $request->table_id,
                 'is_created_from_api' => 1,
                 'invoice_token' => \Str::random(32),
                 'rp_redeemed' => !empty($request->rp_redeemed) ? $request->rp_redeemed : 0,
@@ -294,12 +297,11 @@ class SellController extends BaseApiController
                     'unit_price_before_discount' => $line['unit_price'],
                     'unit_price' => $line['unit_price'],
                     'unit_price_inc_tax' => $line['unit_price'] + ($line['unit_price'] * $tax_rate / 100),
-                    'discount' => $line_discount,
-                    'discount_type' => 'fixed',
+                    'line_discount_amount' => $line_discount,
+                    'line_discount_type' => 'fixed',
                     'item_tax' => $item_tax,
                     'tax_id' => $tax_id,
                     'res_service_staff_id' => $line['service_staff_id'] ?? null,
-                    'enable_stock' => $product->enable_stock,
                 ]);
 
                 // Update stock if applicable
@@ -315,12 +317,9 @@ class SellController extends BaseApiController
                     'business_id' => $business_id,
                     'amount' => $payment['amount'],
                     'method' => $payment['method'],
-                    'reference_no' => $payment['reference'] ?? null,
-                    'payment_date' => now(),
+                    'payment_ref_no' => $payment['reference'] ?? null,
                     'created_by' => $user_id,
                     'paid_on' => now(),
-                    'is_advance' => 0,
-                    'is_change_return' => 0,
                 ]);
             }
 
@@ -403,9 +402,10 @@ class SellController extends BaseApiController
             return $this->errorResponse('Draft not found.', 404);
         }
 
-        // Restore stock
+        // Restore stock by checking if the product has stock management enabled
         foreach ($transaction->sell_lines as $line) {
-            if ($line->enable_stock) {
+            $product = \App\Product::find($line->product_id);
+            if ($product && $product->enable_stock) {
                 $this->updateStock($line->variation_id, $transaction->location_id, $line->quantity, 'increase');
             }
         }
@@ -447,12 +447,9 @@ class SellController extends BaseApiController
             'business_id' => $business_id,
             'amount' => $request->amount,
             'method' => $request->method,
-            'reference_no' => $request->reference,
-            'payment_date' => now(),
+            'payment_ref_no' => $request->reference,
             'created_by' => $user_id,
             'paid_on' => now(),
-            'is_advance' => 0,
-            'is_change_return' => 0,
         ]);
 
         // Update transaction payment status
@@ -468,8 +465,6 @@ class SellController extends BaseApiController
         }
 
         $transaction->update([
-            'amount_paid' => $total_paid,
-            'amount_remaining' => max(0, $amount_remaining),
             'payment_status' => $payment_status,
         ]);
 
@@ -534,10 +529,8 @@ class SellController extends BaseApiController
         if ($stock_detail) {
             if ($action === 'decrease') {
                 $stock_detail->decrement('qty_available', $quantity);
-                $stock_detail->decrement('stock_checked', $quantity);
             } else {
                 $stock_detail->increment('qty_available', $quantity);
-                $stock_detail->increment('stock_checked', $quantity);
             }
         }
     }
@@ -588,7 +581,7 @@ class SellController extends BaseApiController
         DB::beginTransaction();
         try {
             foreach ($request->return_items as $item) {
-                $sell_line = \App\SellLine::where('transaction_id', $id)
+                $sell_line = \App\TransactionSellLine::where('transaction_id', $id)
                     ->where('id', $item['sell_line_id'])
                     ->first();
 
@@ -597,10 +590,7 @@ class SellController extends BaseApiController
                     return $this->errorResponse('Sell line not found: ' . $item['sell_line_id'], 422);
                 }
 
-                if ($item['quantity'] > $sell_line->quantity_returned + $sell_line->quantity - $sell_line->quantity) {
-                    // Allow return up to original quantity minus already returned
-                }
-                $returnable = $sell_line->quantity - $sell_line->quantity_returned;
+                $returnable = $sell_line->quantity - ($sell_line->quantity_returned ?? 0);
                 if ($item['quantity'] > $returnable) {
                     DB::rollBack();
                     return $this->errorResponse('Cannot return more than purchased. Returnable: ' . $returnable, 422);
@@ -613,9 +603,9 @@ class SellController extends BaseApiController
                 $sell_line->quantity_returned += $item['quantity'];
                 $sell_line->save();
 
-                // Restore stock if manage stock
+                // Restore stock if stock management is enabled
                 $product = \App\Product::find($sell_line->product_id);
-                if ($product && $product->manage_stock) {
+                if ($product && $product->enable_stock) {
                     \App\VariationLocationDetails::where('variation_id', $sell_line->variation_id)
                         ->where('location_id', $transaction->location_id)
                         ->decrement('qty_available', $item['quantity']);
@@ -662,14 +652,14 @@ class SellController extends BaseApiController
                     'contact_id' => $transaction->contact_id,
                     'type' => 'sell',
                     'status' => 'final',
-                    'sub_total' => $request->exchange_unit_price * $request->exchange_quantity,
-                    'tax' => 0,
-                    'discount' => 0,
+                    'total_before_tax' => $request->exchange_unit_price * $request->exchange_quantity,
+                    'tax_amount' => 0,
+                    'discount_amount' => 0,
                     'final_total' => $exchange_final,
+                    'payment_status' => 'due',
                     'invoice_no' => 'RET-' . time(),
                     'transaction_date' => now(),
                     'created_by' => $user_id,
-                    'is_return' => 1,
                 ]);
 
                 // Deduct exchange payment from refund
@@ -727,12 +717,11 @@ class SellController extends BaseApiController
             return $this->errorResponse('Customer not found.', 404);
         }
 
-        // Create a credit payment transaction
-        // Find or create a due transaction to pay against
+        // Find due transactions (not fully paid) by checking payment_status
         $due_transactions = Transaction::where('business_id', $business_id)
             ->where('contact_id', $contact_id)
             ->where('type', 'sell')
-            ->whereColumn('final_total', '>', DB::raw('amount_paid'))
+            ->where('payment_status', '!=', 'paid')
             ->orderBy('transaction_date', 'asc')
             ->get();
 
@@ -744,7 +733,11 @@ class SellController extends BaseApiController
             foreach ($due_transactions as $due_txn) {
                 if ($remaining <= 0) break;
 
-                $txn_due = $due_txn->final_total - $due_txn->amount_paid;
+                // Calculate amount paid from payments table (amount_paid column doesn't exist)
+                $total_paid_for_txn = \App\TransactionPayment::where('transaction_id', $due_txn->id)
+                    ->where('is_return', 0)
+                    ->sum('amount');
+                $txn_due = $due_txn->final_total - $total_paid_for_txn;
                 $pay_amount = min($remaining, $txn_due);
 
                 \App\TransactionPayment::create([
@@ -752,13 +745,16 @@ class SellController extends BaseApiController
                     'business_id' => $business_id,
                     'method' => $request->method,
                     'amount' => $pay_amount,
-                    'reference' => $request->reference,
+                    'payment_ref_no' => $request->reference,
                     'paid_on' => now(),
                     'created_by' => $user_id,
                 ]);
 
-                $due_txn->amount_paid += $pay_amount;
-                $due_txn->payment_status = $due_txn->amount_paid >= $due_txn->final_total ? 'paid' : 'partial';
+                // Update payment status based on total payments from payments table
+                $new_total_paid = \App\TransactionPayment::where('transaction_id', $due_txn->id)
+                    ->where('is_return', 0)
+                    ->sum('amount');
+                $due_txn->payment_status = $new_total_paid >= $due_txn->final_total ? 'paid' : 'partial';
                 $due_txn->save();
 
                 $payments_created[] = [
@@ -771,11 +767,21 @@ class SellController extends BaseApiController
 
             DB::commit();
 
-            // Recalculate balance
-            $new_balance = Transaction::where('business_id', $business_id)
+            // Recalculate balance by summing payments from the payments table
+            $due_sells = Transaction::where('business_id', $business_id)
                 ->where('contact_id', $contact_id)
                 ->where('type', 'sell')
-                ->sum(DB::raw('final_total - amount_paid'));
+                ->get();
+            $new_balance = 0;
+            foreach ($due_sells as $sell) {
+                $sell_paid = \App\TransactionPayment::where('transaction_id', $sell->id)
+                    ->where('is_return', 0)
+                    ->sum('amount');
+                $sell_due = $sell->final_total - $sell_paid;
+                if ($sell_due > 0) {
+                    $new_balance += $sell_due;
+                }
+            }
 
             return $this->successResponse([
                 'paid_amount' => $request->amount - $remaining,
