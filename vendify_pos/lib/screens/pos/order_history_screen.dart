@@ -261,7 +261,7 @@ class _OrderHistoryScreenState extends ConsumerState<OrderHistoryScreen> {
       });
     }
 
-    final receiptHtml = printService.buildReceiptHtml(
+    await printService.printReceipt(
       businessName: 'Vendify POS',
       invoiceNumber: '$invoiceNo',
       invoicePrefix: '',
@@ -277,8 +277,6 @@ class _OrderHistoryScreenState extends ConsumerState<OrderHistoryScreen> {
       footer: 'Thank you for your purchase!',
       currencySymbol: 'KD',
     );
-
-    await printService.printHtml(receiptHtml);
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(

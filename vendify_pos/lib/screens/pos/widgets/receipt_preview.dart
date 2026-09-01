@@ -630,42 +630,50 @@ class _ReceiptPreviewState extends State<ReceiptPreview> {
   }
 
   void _printReceipt() async {
-    // Build receipt HTML using PrintService
-    final receiptHtml = _printService.buildReceiptHtml(
-      businessName: _businessName,
-      invoiceNumber: widget.invoiceNumber,
-      invoicePrefix: _receiptPrefix,
-      dateTime: DateTime.now().toString().substring(0, 19),
-      customerName: widget.customerName,
-      items: widget.cartItems.map((item) => {
-        'name': item.productName,
-        'quantity': '${item.quantity.toInt()}',
-        'unit_price': item.unitPrice.toStringAsFixed(3),
-        'line_total': item.lineTotal.toStringAsFixed(3),
-        'discount': item.discountAmount > 0 ? item.discountAmount.toStringAsFixed(3) : null,
-      }).toList(),
-      subtotal: widget.subtotal.toStringAsFixed(3),
-      tax: widget.tax > 0 ? widget.tax.toStringAsFixed(3) : null,
-      discount: widget.discount > 0 ? widget.discount.toStringAsFixed(3) : null,
-      grandTotal: widget.grandTotal.toStringAsFixed(3),
-      payments: widget.payments.map((p) => {
-        'method': _getPaymentMethodLabel(p['method'] ?? ''),
-        'amount': (p['amount'] ?? 0).toStringAsFixed(3),
-      }).toList(),
-      change: widget.change > 0 ? widget.change.toStringAsFixed(3) : null,
-      footer: _receiptFooter,
-      currencySymbol: _currencySymbol,
-    );
-    
-    await _printService.printHtml(receiptHtml);
-    
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Print dialog opened'),
-          backgroundColor: AppTheme.primary,
-        ),
+    try {
+      await _printService.printReceipt(
+        businessName: _businessName,
+        invoiceNumber: widget.invoiceNumber,
+        invoicePrefix: _receiptPrefix,
+        dateTime: DateTime.now().toString().substring(0, 19),
+        customerName: widget.customerName,
+        items: widget.cartItems.map((item) => {
+          'name': item.productName,
+          'quantity': '${item.quantity.toInt()}',
+          'unit_price': item.unitPrice.toStringAsFixed(3),
+          'line_total': item.lineTotal.toStringAsFixed(3),
+          'discount': item.discountAmount > 0 ? item.discountAmount.toStringAsFixed(3) : null,
+        }).toList(),
+        subtotal: widget.subtotal.toStringAsFixed(3),
+        tax: widget.tax > 0 ? widget.tax.toStringAsFixed(3) : null,
+        discount: widget.discount > 0 ? widget.discount.toStringAsFixed(3) : null,
+        grandTotal: widget.grandTotal.toStringAsFixed(3),
+        payments: widget.payments.map((p) => {
+          'method': _getPaymentMethodLabel(p['method'] ?? ''),
+          'amount': (p['amount'] ?? 0).toStringAsFixed(3),
+        }).toList(),
+        change: widget.change > 0 ? widget.change.toStringAsFixed(3) : null,
+        footer: _receiptFooter,
+        currencySymbol: _currencySymbol,
       );
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Print dialog opened'),
+            backgroundColor: AppTheme.primary,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Print failed: $e'),
+            backgroundColor: AppTheme.error,
+          ),
+        );
+      }
     }
   }
 

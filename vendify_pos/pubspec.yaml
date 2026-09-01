@@ -21,6 +21,8 @@ dependencies:
   connectivity_plus: ^6.1.0
   mobile_scanner: ^5.2.3
   barcode_widget: ^2.0.4
+  printing: ^5.13.4
+  pdf: ^3.11.2
 
 dev_dependencies:
   flutter_test:
