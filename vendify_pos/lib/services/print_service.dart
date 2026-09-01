@@ -152,11 +152,11 @@ class PrintService {
     PdfPageFormat pageFormat;
     switch (paperSize) {
       case PaperSize.thermal80:
-        pageFormat = PdfPageFormat(80 * PdfPageFormat.mm, double.infinity,
+        pageFormat = PdfPageFormat(80 * PdfPageFormat.mm, 200 * PdfPageFormat.mm,
             marginAll: 4 * PdfPageFormat.mm);
         break;
       case PaperSize.thermal58:
-        pageFormat = PdfPageFormat(58 * PdfPageFormat.mm, double.infinity,
+        pageFormat = PdfPageFormat(58 * PdfPageFormat.mm, 200 * PdfPageFormat.mm,
             marginAll: 3 * PdfPageFormat.mm);
         break;
       case PaperSize.regular:
