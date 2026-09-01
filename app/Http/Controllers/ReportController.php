@@ -371,9 +371,11 @@ class ReportController extends Controller
 
             $datatable = Datatables::of($products)
                 ->editColumn('stock', function ($row) {
+                    $stock = $row->stock ? (float) $row->stock : 0;
                     if ($row->enable_stock) {
-                        $stock = $row->stock ? $row->stock : 0;
-
+                        return  '<span class="current_stock" data-is_quantity="true" data-orig-value="'.(float) $stock.'" data-unit="'.$row->unit.'"> '.$this->transactionUtil->num_f($stock, false, null, true).'</span>'.' '.$row->unit;
+                    } elseif ($stock > 0) {
+                        // Show stock even if enable_stock is off, when stock exists
                         return  '<span class="current_stock" data-is_quantity="true" data-orig-value="'.(float) $stock.'" data-unit="'.$row->unit.'"> '.$this->transactionUtil->num_f($stock, false, null, true).'</span>'.' '.$row->unit;
                     } else {
                         return '--';

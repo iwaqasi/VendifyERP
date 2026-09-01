@@ -277,10 +277,15 @@ class ProductController extends Controller
                     return  '<input type="checkbox" class="row-select" value="'.$row->id.'">';
                 })
                 ->editColumn('current_stock', function ($row) {
+                    $stock = $row->current_stock ?? 0;
                     if ($row->enable_stock) {
-                        $stock = $this->productUtil->num_f($row->current_stock, false, null, true);
+                        $formatted = $this->productUtil->num_f($stock, false, null, true);
 
-                        return '<span data-is_quantity="true" class="current_stock" data-orig-value="'.$stock.'" data-unit="'.$row->unit.'" >'.$stock.'</span> '.$row->unit;
+                        return '<span data-is_quantity="true" class="current_stock" data-orig-value="'.$formatted.'" data-unit="'.$row->unit.'" >'.$formatted.'</span> '.$row->unit;
+                    } elseif ($stock > 0) {
+                        // Show stock even if enable_stock is off, when stock exists (e.g. via Purchase)
+                        $formatted = $this->productUtil->num_f($stock, false, null, true);
+                        return '<span data-is_quantity="true" class="current_stock" data-orig-value="'.$formatted.'" data-unit="'.$row->unit.'" >'.$formatted.'</span> '.$row->unit;
                     } else {
                         return '--';
                     }
