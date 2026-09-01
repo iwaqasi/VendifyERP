@@ -22,6 +22,7 @@ class User {
   final String? businessType;
   final int? defaultLocationId;
   final String? defaultLocationName;
+  final bool hasAssignedLocation;
   final List<BusinessLocation> locations;
   final List<String> roles;
 
@@ -35,6 +36,7 @@ class User {
     this.businessType,
     this.defaultLocationId,
     this.defaultLocationName,
+    this.hasAssignedLocation = false,
     this.locations = const [],
     this.roles = const [],
   });
@@ -50,6 +52,7 @@ class User {
       businessType: json['business_type'],
       defaultLocationId: json['default_location_id'],
       defaultLocationName: json['default_location_name'],
+      hasAssignedLocation: json['has_assigned_location'] ?? false,
       locations: json['locations'] != null
           ? (json['locations'] as List).map((l) => BusinessLocation.fromJson(l)).toList()
           : [],
@@ -70,6 +73,7 @@ class User {
       'business_type': businessType,
       'default_location_id': defaultLocationId,
       'default_location_name': defaultLocationName,
+      'has_assigned_location': hasAssignedLocation,
       'locations': locations.map((l) => {'id': l.id, 'name': l.name}).toList(),
       'roles': roles,
     };

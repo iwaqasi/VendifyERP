@@ -190,6 +190,7 @@ Route::middleware('auth:api')->group(function () {
     Route::get('/v1/locations', [\App\Http\Controllers\Api\V1\LocationController::class, 'index']);
     Route::get('/v1/locations/stock-summary', [\App\Http\Controllers\Api\V1\LocationController::class, 'stockSummary']);
     Route::get('/v1/locations/stock/{product_id}', [\App\Http\Controllers\Api\V1\LocationController::class, 'productStock']);
+    Route::get('/v1/locations/cross-stock/{variation_id}', [\App\Http\Controllers\Api\V1\LocationController::class, 'crossLocationStock']);
     Route::post('/v1/locations/transfer', [\App\Http\Controllers\Api\V1\LocationController::class, 'createTransfer']);
     Route::get('/v1/locations/transfers', [\App\Http\Controllers\Api\V1\LocationController::class, 'transfers']);
     Route::get('/v1/locations/sales-report', [\App\Http\Controllers\Api\V1\LocationController::class, 'salesReport']);

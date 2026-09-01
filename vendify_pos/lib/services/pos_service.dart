@@ -823,4 +823,28 @@ class PosService {
     }
     return {};
   }
+
+  /// Check stock for a variation at OTHER locations (excluding current)
+  /// Used when current location is out of stock — shows cashier where to request a transfer from
+  Future<List<Map<String, dynamic>>> getCrossLocationStock(
+    int variationId, {
+    int? excludeLocationId,
+  }) async {
+    try {
+      final params = <String, dynamic>{};
+      if (excludeLocationId != null) params['exclude_location_id'] = excludeLocationId;
+      final response = await _api.get(
+        '/v1/locations/cross-stock/$variationId',
+        queryParameters: params,
+      );
+      if (response.data['success'] == true) {
+        return List<Map<String, dynamic>>.from(
+          response.data['data']['stock_at_other_locations'] ?? [],
+        );
+      }
+    } catch (e) {
+      // Intentional fallback
+    }
+    return [];
+  }
 }

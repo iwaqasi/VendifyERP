@@ -264,7 +264,12 @@ class ManageUserController extends Controller
                 'blood_group', 'contact_number', 'fb_link', 'twitter_link', 'social_media_1',
                 'social_media_2', 'permanent_address', 'current_address',
                 'guardian_name', 'custom_field_1', 'custom_field_2',
-                'custom_field_3', 'custom_field_4', 'id_proof_name', 'id_proof_number', 'cmmsn_percent', 'gender', 'max_sales_discount_percent', 'family_number', 'alt_number', 'is_enable_service_staff_pin']);
+                'custom_field_3', 'custom_field_4', 'id_proof_name', 'id_proof_number', 'cmmsn_percent', 'gender', 'max_sales_discount_percent', 'family_number', 'alt_number', 'is_enable_service_staff_pin', 'default_location_id']);
+
+            // Handle default_location_id — empty string means no default
+            if (empty($user_data['default_location_id'])) {
+                $user_data['default_location_id'] = null;
+            }
 
             $user_data['status'] = ! empty($request->input('is_active')) ? 'active' : 'inactive';
 

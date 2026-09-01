@@ -98,16 +98,31 @@ class _PosLayoutRouterState extends ConsumerState<PosLayoutRouter> {
       );
     }
 
-    // Show location selector if multiple locations
-    if (_locations.length > 1 && _selectedLocationId == null) {
+    // If user has an assigned location AND a location is saved, skip the picker
+    // This is the primary flow for cashiers — they log in and go directly to their assigned shop
+    if (_selectedLocationId != null) {
+      return _getPosScreen();
+    }
+
+    // Show location selector only when:
+    // - Multiple locations exist, AND
+    // - No location was saved (admin with no assignment, or first login)
+    if (_locations.length > 1) {
       return _buildLocationSelector();
     }
 
-    // Route to the correct POS layout
+    // Single location — go directly to POS
     return _getPosScreen();
   }
 
   Widget _buildLocationSelector() {
+    // Get the saved user name for a personalized greeting
+    String userName = '';
+    String locationHint = '';
+    SharedPreferences.getInstance().then((p) {
+      userName = p.getString('user_name') ?? '';
+    });
+
     return Scaffold(
       backgroundColor: AppTheme.background,
       body: Center(
@@ -129,9 +144,9 @@ class _PosLayoutRouterState extends ConsumerState<PosLayoutRouter> {
                 style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppTheme.textPrimary),
               ),
               const SizedBox(height: 8),
-              const Text(
-                'Choose which location to operate from',
-                style: TextStyle(color: AppTheme.textSecondary, fontSize: 13),
+              Text(
+                locationHint.isNotEmpty ? locationHint : 'Choose which location to operate from',
+                style: const TextStyle(color: AppTheme.textSecondary, fontSize: 13),
               ),
               const SizedBox(height: 24),
               ..._locations.map((loc) => Padding(

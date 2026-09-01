@@ -149,6 +149,14 @@
                 </div>
               @endforeach
             </div>
+            <div class="clearfix"></div>
+            <div class="col-md-6">
+                <div class="form-group">
+                  {!! Form::label('default_location_id', __('lang_v1.default_pos_location') . ':') !!} @show_tooltip(__('tooltip.default_pos_location_help'))
+                    {!! Form::select('default_location_id', $locations->pluck('name', 'id')->prepend(__('lang_v1.no_default'), ''), $user->default_location_id ?? '', ['class' => 'form-control select2', 'style' => 'width: 100%;']); !!}
+                    <p class="help-block">@lang('lang_v1.default_location_help')</p>
+                </div>
+            </div>
         @endcomponent
         </div>
 

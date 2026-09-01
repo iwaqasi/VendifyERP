@@ -16,6 +16,7 @@ class ProductCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final isOutOfStock = product.enableStock && product.qtyAvailable <= 0;
     final stockQty = product.qtyAvailable.toInt();
+    final hasStockElsewhere = isOutOfStock && product.stockAtOtherLocations.isNotEmpty;
 
     return InkWell(
       onTap: isOutOfStock ? null : onTap,
@@ -73,14 +74,14 @@ class ProductCard extends StatelessWidget {
                           padding: const EdgeInsets.symmetric(
                               horizontal: 8, vertical: 4),
                           decoration: BoxDecoration(
-                            color: AppTheme.error,
+                            color: hasStockElsewhere ? Colors.orange : AppTheme.error,
                             borderRadius: BorderRadius.circular(4),
                           ),
-                          child: const Text(
-                            'Sold Out',
-                            style: TextStyle(
+                          child: Text(
+                            hasStockElsewhere ? 'Available at ${product.stockAtOtherLocations.length} other location${product.stockAtOtherLocations.length > 1 ? 's' : ''}' : 'Sold Out',
+                            style: const TextStyle(
                               color: Colors.white,
-                              fontSize: 11,
+                              fontSize: 10,
                               fontWeight: FontWeight.bold,
                             ),
                           ),
@@ -112,18 +113,37 @@ class ProductCard extends StatelessWidget {
                   ),
                   const SizedBox(height: 4),
 
-                  // Stock quantity - always show
-                  Text(
-                    product.enableStock
-                        ? 'On Hand: $stockQty'
-                        : 'Non-stock',
-                    style: TextStyle(
-                      fontSize: 10,
-                      color: product.enableStock
-                          ? (stockQty <= 0 ? AppTheme.error : AppTheme.primary)
-                          : AppTheme.textMuted,
+                  // Stock quantity - show current location + other locations summary
+                  if (product.enableStock)
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'On Hand: $stockQty',
+                          style: TextStyle(
+                            fontSize: 10,
+                            color: stockQty <= 0 ? AppTheme.error : AppTheme.primary,
+                            fontWeight: stockQty <= 0 ? FontWeight.w600 : FontWeight.normal,
+                          ),
+                        ),
+                        if (hasStockElsewhere)
+                          Text(
+                            'Also at: ${product.stockAtOtherLocations.map((l) => '${l.locationName}(${l.qtyAvailable.toInt()})').join(', ')}',
+                            style: TextStyle(
+                              fontSize: 9,
+                              color: Colors.orange.shade700,
+                              fontWeight: FontWeight.w500,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                      ],
+                    )
+                  else
+                    const Text(
+                      'Non-stock',
+                      style: TextStyle(fontSize: 10, color: AppTheme.textMuted),
                     ),
-                  ),
 
                   const SizedBox(height: 4),
 

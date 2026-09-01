@@ -349,6 +349,7 @@ class ProductController extends BaseApiController
 
     /**
      * Transform product for API response
+     * When stock at current location is 0, includes stock at other locations
      */
     private function transformProduct(Product $product, ?int $location_id): array
     {
@@ -356,10 +357,21 @@ class ProductController extends BaseApiController
         $pv = $product->product_variations()->first();
         $variation = $pv ? $pv->variations()->first() : null;
 
-        // Get stock
+        // Get stock at current location
         $totalStock = 0;
         if ($product->enable_stock && $location_id && $variation) {
             $totalStock = $this->getVariationStock($variation->id, $location_id);
+        }
+
+        // Cross-location stock: when current location is out of stock,
+        // show stock available at other locations so cashier knows where to transfer from
+        $stockAtOtherLocations = [];
+        if ($product->enable_stock && $totalStock <= 0 && $location_id && $variation) {
+            $stockAtOtherLocations = $this->getStockAtOtherLocations(
+                $variation->id,
+                $location_id,
+                $product->business_id
+            );
         }
 
         return [
@@ -378,6 +390,7 @@ class ProductController extends BaseApiController
             'product_cost_price' => $variation ? (float) $variation->default_purchase_price : 0,
             'enable_stock' => $product->enable_stock,
             'qty_available' => $totalStock,
+            'stock_at_other_locations' => $stockAtOtherLocations,
             'is_flexible_price' => $product->is_flexible_price ?? false,
             'image' => $product->image_url,
             'tax_id' => $product->tax_id,
@@ -407,4 +420,26 @@ class ProductController extends BaseApiController
 
         return (float) ($stock ?? 0);
     }
-}
+
+    /**
+     * Get stock at other locations (excluding current location)
+     * Used when current location is out of stock — shows where to transfer from
+     */
+    private function getStockAtOtherLocations(int $variation_id, int $currentLocationId, int $business_id): array
+    {
+        $stocks = \App\VariationLocationDetails::join('business_locations', 'variation_location_details.location_id', '=', 'business_locations.id')
+            ->where('variation_location_details.variation_id', $variation_id)
+            ->where('variation_location_details.location_id', '!=', $currentLocationId)
+            ->where('business_locations.business_id', $business_id)
+            ->where('business_locations.is_active', 1)
+            ->where('variation_location_details.qty_available', '>', 0)
+            ->select(
+                'variation_location_details.location_id',
+                'business_locations.name as location_name',
+                'variation_location_details.qty_available'
+            )
+            ->get()
+            ->toArray();
+
+        return $stocks;
+    }

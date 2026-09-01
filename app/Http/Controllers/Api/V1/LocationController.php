@@ -258,4 +258,41 @@ class LocationController extends BaseApiController
             'top_products_by_location' => $topByLocation,
         ]);
     }
+
+    /**
+     * Check stock for a product at other locations (excluding current)
+     * GET /api/v1/locations/cross-stock/{variation_id}?exclude_location_id=1
+     * 
+     * Used by POS when current location is out of stock —
+     * shows cashier which branch has stock available for transfer.
+     */
+    public function crossLocationStock(Request $request, int $variationId): JsonResponse
+    {
+        $business_id = $this->getBusinessId($request);
+        $excludeLocationId = $request->input('exclude_location_id');
+
+        $query = DB::table('variation_location_details')
+            ->join('business_locations', 'variation_location_details.location_id', '=', 'business_locations.id')
+            ->where('variation_location_details.variation_id', $variationId)
+            ->where('business_locations.business_id', $business_id)
+            ->where('business_locations.is_active', 1)
+            ->where('variation_location_details.qty_available', '>', 0);
+
+        if ($excludeLocationId) {
+            $query->where('variation_location_details.location_id', '!=', $excludeLocationId);
+        }
+
+        $stock = $query->select(
+                'variation_location_details.location_id',
+                'business_locations.name as location_name',
+                'variation_location_details.qty_available'
+            )
+            ->get();
+
+        return $this->successResponse([
+            'variation_id' => $variationId,
+            'stock_at_other_locations' => $stock,
+            'total_available_elsewhere' => $stock->sum('qty_available'),
+        ]);
+    }
 }

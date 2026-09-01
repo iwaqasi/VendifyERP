@@ -66,6 +66,12 @@ class AuthController extends BaseApiController
 
     /**
      * Create token response for both login methods
+     * 
+     * Location resolution priority:
+     * 1. User's assigned default_location_id (cashier → specific shop)
+     * 2. First active location for the business (admin fallback)
+     * 
+     * If user has an assigned location, POS skips the location picker.
      */
     private function createTokenResponse($user, Request $request): JsonResponse
     {
@@ -75,15 +81,37 @@ class AuthController extends BaseApiController
         $token = $user->createToken($deviceName);
 
         $business = \App\Business::find($user->business_id);
-        $location = \App\BusinessLocation::where('business_id', $user->business_id)
-            ->where('is_active', 1)
-            ->first();
 
-        // Fetch all locations for the business (for location picker)
-        $locations = \App\BusinessLocation::where('business_id', $user->business_id)
-            ->where('is_active', 1)
-            ->get(['id', 'name'])
-            ->toArray();
+        // Determine the user's active location
+        // Priority: user's assigned location > first active location
+        $assignedLocation = null;
+        if (!empty($user->default_location_id)) {
+            $assignedLocation = \App\BusinessLocation::where('id', $user->default_location_id)
+                ->where('business_id', $user->business_id)
+                ->where('is_active', 1)
+                ->first();
+        }
+
+        // Fallback to first active location if no assignment or assigned location is inactive
+        if (!$assignedLocation) {
+            $assignedLocation = \App\BusinessLocation::where('business_id', $user->business_id)
+                ->where('is_active', 1)
+                ->first();
+        }
+
+        // Fetch locations the user has access to (filtered by permissions)
+        $permittedLocations = $user->permitted_locations($user->business_id);
+        $locationQuery = \App\BusinessLocation::where('business_id', $user->business_id)
+            ->where('is_active', 1);
+
+        if ($permittedLocations !== 'all') {
+            $locationQuery->whereIn('id', $permittedLocations);
+        }
+
+        $locations = $locationQuery->get(['id', 'name'])->toArray();
+
+        // has_assigned_location tells the POS to skip the location picker
+        $hasAssignedLocation = !empty($user->default_location_id) && $assignedLocation !== null;
 
         return $this->successResponse([
             'access_token' => $token->accessToken,
@@ -97,8 +125,9 @@ class AuthController extends BaseApiController
                 'business_name' => $business->name ?? null,
                 'business_slug' => $business->slug ?? null,
                 'business_type' => $business->business_type ?? 'retail',
-                'default_location_id' => $location->id ?? null,
-                'default_location_name' => $location->name ?? null,
+                'default_location_id' => $assignedLocation->id ?? null,
+                'default_location_name' => $assignedLocation->name ?? null,
+                'has_assigned_location' => $hasAssignedLocation,
                 'locations' => $locations,
                 'roles' => $user->getRoleNames()->toArray(),
             ],
@@ -180,9 +209,19 @@ class AuthController extends BaseApiController
             return $this->errorResponse('You do not have access to this business.', 403);
         }
 
-        $location = \App\BusinessLocation::where('business_id', $business->id)
-            ->where('is_active', 1)
-            ->first();
+        // Use user's assigned location, fallback to first active
+        $location = null;
+        if (!empty($user->default_location_id)) {
+            $location = \App\BusinessLocation::where('id', $user->default_location_id)
+                ->where('business_id', $business->id)
+                ->where('is_active', 1)
+                ->first();
+        }
+        if (!$location) {
+            $location = \App\BusinessLocation::where('business_id', $business->id)
+                ->where('is_active', 1)
+                ->first();
+        }
 
         return $this->successResponse([
             'business_id' => $business->id,
@@ -191,6 +230,7 @@ class AuthController extends BaseApiController
             'business_type' => $business->business_type ?? 'retail',
             'default_location_id' => $location->id ?? null,
             'default_location_name' => $location->name ?? null,
+            'has_assigned_location' => !empty($user->default_location_id) && $location !== null,
         ], 'Business switched successfully');
     }
 }

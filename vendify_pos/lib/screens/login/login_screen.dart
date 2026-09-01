@@ -51,6 +51,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       await prefs.setString('business_slug', response.user.businessSlug ?? '');
       await prefs.setString('business_type', response.user.businessType ?? 'retail');
       await prefs.setString('user_name', response.user.name.isNotEmpty ? response.user.name : 'Admin');
+      await prefs.setBool('has_assigned_location', response.user.hasAssignedLocation);
+      if (response.user.defaultLocationName != null) {
+        await prefs.setString('assigned_location_name', response.user.defaultLocationName!);
+      }
 
       if (mounted) {
         Navigator.pushReplacement(

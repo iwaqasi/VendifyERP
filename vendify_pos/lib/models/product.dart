@@ -1,3 +1,23 @@
+class StockAtOtherLocation {
+  final int locationId;
+  final String locationName;
+  final double qtyAvailable;
+
+  StockAtOtherLocation({
+    required this.locationId,
+    required this.locationName,
+    required this.qtyAvailable,
+  });
+
+  factory StockAtOtherLocation.fromJson(Map<String, dynamic> json) {
+    return StockAtOtherLocation(
+      locationId: json['location_id'] ?? 0,
+      locationName: json['location_name'] ?? '',
+      qtyAvailable: (json['qty_available'] ?? 0).toDouble(),
+    );
+  }
+}
+
 class Product {
   final int id;
   final String name;
@@ -12,6 +32,7 @@ class Product {
   final double productCostPrice;
   final bool enableStock;
   final double qtyAvailable;
+  final List<StockAtOtherLocation> stockAtOtherLocations;
   final bool isFlexiblePrice;
   final String? image;
   final int? taxId;
@@ -37,6 +58,7 @@ class Product {
     this.productCostPrice = 0,
     this.enableStock = false,
     this.qtyAvailable = 0,
+    this.stockAtOtherLocations = const [],
     this.isFlexiblePrice = false,
     this.image,
     this.taxId,
@@ -48,6 +70,15 @@ class Product {
     this.serviceTime,
     this.variationId,
   });
+
+  /// Total stock across ALL locations
+  double get totalStockAcrossLocations {
+    double total = qtyAvailable;
+    for (final loc in stockAtOtherLocations) {
+      total += loc.qtyAvailable;
+    }
+    return total;
+  }
 
   factory Product.fromJson(Map<String, dynamic> json) {
     return Product(
@@ -64,6 +95,11 @@ class Product {
       productCostPrice: (json['product_cost_price'] ?? 0).toDouble(),
       enableStock: json['enable_stock'] == true || json['enable_stock'] == 1,
       qtyAvailable: (json['qty_available'] ?? 0).toDouble(),
+      stockAtOtherLocations: json['stock_at_other_locations'] != null
+          ? (json['stock_at_other_locations'] as List)
+              .map((l) => StockAtOtherLocation.fromJson(l))
+              .toList()
+          : [],
       isFlexiblePrice: json['is_flexible_price'] == true || json['is_flexible_price'] == 1,
       image: json['image'],
       taxId: json['tax_id'],
@@ -90,6 +126,11 @@ class Product {
     'product_cost_price': productCostPrice,
     'enable_stock': enableStock,
     'qty_available': qtyAvailable,
+    'stock_at_other_locations': stockAtOtherLocations.map((l) => {
+      'location_id': l.locationId,
+      'location_name': l.locationName,
+      'qty_available': l.qtyAvailable,
+    }).toList(),
     'is_flexible_price': isFlexiblePrice,
     'image': image,
     'tax_id': taxId,

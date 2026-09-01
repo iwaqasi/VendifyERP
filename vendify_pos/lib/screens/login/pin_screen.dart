@@ -67,6 +67,10 @@ class _PinScreenState extends ConsumerState<PinScreen> {
         await savedPrefs.setString('business_slug', userData['business_slug'] ?? '');
         await savedPrefs.setString('business_type', userData['business_type'] ?? 'retail');
         await savedPrefs.setString('user_name', userData['name'] ?? 'Admin');
+        await savedPrefs.setBool('has_assigned_location', userData['has_assigned_location'] ?? false);
+        if (userData['default_location_name'] != null) {
+          await savedPrefs.setString('assigned_location_name', userData['default_location_name']);
+        }
         
         // Always go to POS layout router — it handles business type detection
         if (mounted) {
