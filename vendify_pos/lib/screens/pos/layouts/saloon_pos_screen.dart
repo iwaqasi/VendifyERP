@@ -10,6 +10,7 @@ import 'package:vendify_pos/models/product.dart';
 import 'package:vendify_pos/models/cart_item.dart';
 import 'package:vendify_pos/services/pos_service.dart';
 import 'package:vendify_pos/screens/pos/widgets/product_card.dart';
+import 'package:vendify_pos/screens/pos/widgets/inventory_dialog.dart';
 import 'package:vendify_pos/screens/pos/widgets/cart_panel.dart';
 import 'package:vendify_pos/screens/pos/payment_screen.dart';
 import 'package:vendify_pos/screens/login/pin_screen.dart';
@@ -779,6 +780,11 @@ class _SaloonPosScreenState extends ConsumerState<SaloonPosScreen> {
             tooltip: 'Toggle Appointments',
           ),
           IconButton(
+            icon: const Icon(Icons.inventory_2_outlined, color: AppTheme.textSecondary, size: 22),
+            onPressed: _openInventory,
+            tooltip: 'Inventory',
+          ),
+          IconButton(
             icon: const Icon(Icons.logout, color: AppTheme.textSecondary, size: 22),
             onPressed: _logout,
             tooltip: 'Logout',
@@ -786,6 +792,10 @@ class _SaloonPosScreenState extends ConsumerState<SaloonPosScreen> {
         ],
       ),
     );
+  }
+
+  void _openInventory() {
+    InventoryDialog.show(context);
   }
 
   Widget _buildAppointmentSidebar() {

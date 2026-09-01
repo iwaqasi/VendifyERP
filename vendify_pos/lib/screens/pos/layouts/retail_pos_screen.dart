@@ -8,6 +8,7 @@ import 'package:vendify_pos/models/product.dart';
 import 'package:vendify_pos/models/cart_item.dart';
 import 'package:vendify_pos/services/pos_service.dart';
 import 'package:vendify_pos/screens/pos/widgets/product_card.dart';
+import 'package:vendify_pos/screens/pos/widgets/inventory_dialog.dart';
 import 'package:vendify_pos/screens/pos/widgets/cart_panel.dart';
 import 'package:vendify_pos/screens/pos/widgets/category_sidebar.dart';
 import 'package:vendify_pos/screens/pos/payment_screen.dart';
@@ -503,11 +504,12 @@ class _RetailPosScreenState extends ConsumerState<RetailPosScreen> {
   void _openOrderHistory() {
     Navigator.push(context,
         MaterialPageRoute(builder: (_) => const InvoiceHistoryScreen()));
+  }  void _openDailyRegister() {
+    Navigator.push(context, MaterialPageRoute(builder: (_) => const DailyRegisterScreen()));
   }
 
-  void _openDailyRegister() {
-    Navigator.push(context,
-        MaterialPageRoute(builder: (_) => const DailyRegisterScreen()));
+  void _openInventory() {
+    InventoryDialog.show(context);
   }
 
   void _logout() {
@@ -641,7 +643,7 @@ class _RetailPosScreenState extends ConsumerState<RetailPosScreen> {
           const Spacer(),
           _buildTopBarButton(Icons.receipt_long, 'Invoices', _openOrderHistory),
           _buildTopBarButton(Icons.account_balance_wallet, 'Register', _openDailyRegister),
-          _buildTopBarButton(Icons.inventory_2_outlined, 'Inventory', null),
+          _buildTopBarButton(Icons.inventory_2_outlined, 'Inventory', _openInventory),
           const SizedBox(width: 8),
           IconButton(
             icon: const Icon(Icons.sync, color: AppTheme.textSecondary, size: 22),
