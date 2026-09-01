@@ -32,13 +32,24 @@ class Product extends Model
     public function getImageUrlAttribute()
     {
         if (! empty($this->image)) {
-            // Per-business folder: uploads/img/{business_id}/{filename}
-            $image_url = asset('/uploads/img/'.$this->business_id.'/'.rawurlencode($this->image));
-        } else {
-            $image_url = asset('/img/default.png');
+            // Check per-business folder first, then flat folder
+            $bizPath = public_path('uploads/img/'.$this->business_id.'/'.rawurlencode($this->image));
+            $flatPath = public_path('uploads/img/'.rawurlencode($this->image));
+
+            if (file_exists($bizPath)) {
+                return asset('/uploads/img/'.$this->business_id.'/'.rawurlencode($this->image));
+            } elseif (file_exists($flatPath)) {
+                return asset('/uploads/img/'.rawurlencode($this->image));
+            }
         }
 
-        return $image_url;
+        // Fallback: check Media model (variation-level images)
+        $media = $this->media()->first();
+        if ($media) {
+            return $media->display_url;
+        }
+
+        return asset('/img/default.png');
     }
 
     /**
