@@ -78,11 +78,13 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
     final items = inv['sell_lines'] as List? ?? [];
     final payments = inv['payment_lines'] as List? ?? [];
     final total = _vd(inv['final_total']);
-    final amountPaid = _vd(inv['amount_paid']);
+    // Compute amount paid from payment_lines (amount_paid column doesn't exist on transactions)
+    final paymentsList = payments.where((p) => p['is_return'] != 1).toList();
+    final amountPaid = paymentsList.fold<double>(0, (sum, p) => sum + _vd(p['amount']));
     final due = total - amountPaid;
-    final discount = _vd(inv['discount']);
-    final tax = _vd(inv['tax']);
-    final subTotal = _vd(inv['sub_total']);
+    final discount = _vd(inv['discount_amount']);
+    final tax = _vd(inv['tax_amount']);
+    final subTotal = _vd(inv['total_before_tax']);
     final paymentStatus = inv['payment_status'] ?? 'pending';
     final isReturn = inv['is_return'] == 1;
     final location = inv['location'];
@@ -326,9 +328,9 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
     final productName = product != null ? (product['name'] ?? 'Unknown') : 'Unknown';
     final qty = _vd(item['quantity']);
     final unitPrice = _vd(item['unit_price']);
-    final discount = _vd(item['discount']);
+    final lineDiscount = _vd(item['line_discount_amount']);
     final returned = _vd(item['quantity_returned']);
-    final lineTotal = qty * unitPrice - discount;
+    final lineTotal = qty * unitPrice - lineDiscount;
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
@@ -347,7 +349,7 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
           Row(
             children: [
               Text('Qty: ${qty.toInt()} × KD ${unitPrice.toStringAsFixed(3)}', style: TextStyle(fontSize: 11, color: AppTheme.textMuted)),
-              if (discount > 0) Text(' - KD ${discount.toStringAsFixed(3)}', style: TextStyle(fontSize: 11, color: AppTheme.error)),
+              if (lineDiscount > 0) Text(' - KD ${lineDiscount.toStringAsFixed(3)}', style: TextStyle(fontSize: 11, color: AppTheme.error)),
               if (returned > 0) ...[
                 const SizedBox(width: 8),
                 Container(
@@ -426,7 +428,8 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
     final customerName = contact != null ? (contact['name'] ?? 'Walk-in') : 'Walk-in';
     final items = inv['sell_lines'] as List? ?? [];
     final total = _vd(inv['final_total']);
-    final amountPaid = _vd(inv['amount_paid']);
+    final invPayments = (inv['payment_lines'] as List?) ?? [];
+    final amountPaid = invPayments.where((p) => p['is_return'] != 1).fold<double>(0, (sum, p) => sum + _vd(p['amount']));
     final due = total - amountPaid;
     final invoiceNo = inv['invoice_no'] ?? 'N/A';
 

@@ -1,10 +1,13 @@
-// ignore: avoid_web_libraries_in_flutter
-import 'dart:html' as html;
+import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+// Conditional import: on web use dart:html implementation, on native use stub
+import 'print_service_stub.dart'
+    if (dart.library.html) 'print_service_web.dart' as platform;
 
 /// Paper size presets for thermal printers
 enum PaperSize {
@@ -18,10 +21,10 @@ enum PaperSize {
   thermal58,
 }
 
-/// Cross-platform print service that works on Windows, Android, iOS, macOS, Linux, and Web.
+/// Cross-platform print service.
 ///
-/// - Web: opens browser print dialog with styled HTML receipt
-/// - Desktop/Mobile: generates a PDF receipt and sends to system printer via `printing` package
+/// - **Web**: opens browser print dialog with styled HTML receipt
+/// - **Windows/macOS/Linux/Android/iOS**: generates PDF and opens system print dialog
 class PrintService {
   static const String _paperSizeKey = 'print_paper_size';
   static const String _autoPrintKey = 'print_auto_print';
@@ -63,8 +66,6 @@ class PrintService {
   // ============ Print Entry Point ============
 
   /// Print a receipt — platform-aware.
-  /// On web: opens browser print dialog with HTML receipt.
-  /// On desktop/mobile: generates PDF and opens system print dialog.
   Future<void> printReceipt({
     required String businessName,
     required String invoiceNumber,
@@ -101,7 +102,7 @@ class PrintService {
         footer: footer,
         currencySymbol: currencySymbol,
       );
-      await _printHtmlWeb(htmlContent, paperSize);
+      platform.openPrintWindow(htmlContent);
     } else {
       // Desktop/Mobile: generate PDF and use system print dialog
       final pdfBytes = await buildReceiptPdf(
@@ -121,52 +122,16 @@ class PrintService {
         currencySymbol: currencySymbol,
         paperSize: paperSize,
       );
-      await _printPdfNative(pdfBytes);
+      await Printing.layoutPdf(
+        onLayout: (PdfPageFormat format) async => Uint8List.fromList(pdfBytes),
+        name: 'Receipt',
+        usePrinterSettings: true,
+      );
     }
   }
 
-  // ============ Web Printing (dart:html) ============
+  // ============ PDF Receipt Generation (Native) ============
 
-  Future<void> _printHtmlWeb(String htmlContent, PaperSize paperSize) async {
-    final fullHtml = _buildPrintDocument(htmlContent, paperSize);
-
-    // Inject script into current page to open print window
-    final escaped = fullHtml
-        .replaceAll('\\', '\\\\')
-        .replaceAll("'", "\\'")
-        .replaceAll('\n', '\\n')
-        .replaceAll('\r', '\\r');
-
-    final jsCode = '''
-      (function() {
-        var w = window.open('', '_blank');
-        if (!w) { alert('Please allow popups for printing'); return; }
-        w.document.open();
-        w.document.write('$escaped');
-        w.document.close();
-        setTimeout(function() { w.print(); }, 500);
-      })();
-    ''';
-
-    final script = html.ScriptElement()..text = jsCode;
-    // ignore: undefined_prefixed_name
-    html.document.head!.append(script);
-    script.remove();
-  }
-
-  // ============ Native Printing (PDF via `printing` package) ============
-
-  Future<void> _printPdfNative(List<int> pdfBytes) async {
-    await Printing.layoutPdf(
-      onLayout: (PdfPageFormat format) async => Uint8List.fromList(pdfBytes),
-      name: 'Receipt',
-      usePrinterSettings: true, // Let user pick printer via OS dialog
-    );
-  }
-
-  // ============ PDF Receipt Generation ============
-
-  /// Build a PDF receipt as bytes. Can be printed directly or saved.
   Future<List<int>> buildReceiptPdf({
     required String businessName,
     required String invoiceNumber,
@@ -184,7 +149,6 @@ class PrintService {
     String currencySymbol = 'KD',
     PaperSize paperSize = PaperSize.thermal80,
   }) async {
-    // Determine page dimensions based on paper size
     PdfPageFormat pageFormat;
     switch (paperSize) {
       case PaperSize.thermal80:
@@ -252,8 +216,6 @@ class PrintService {
                 style: pw.TextStyle(font: font, fontSize: 9, color: PdfColors.grey600)),
           ),
           pw.SizedBox(height: 8),
-
-          // Divider
           pw.Divider(color: PdfColors.grey300, height: 1),
           pw.SizedBox(height: 6),
 
@@ -288,22 +250,16 @@ class PrintService {
           pw.Divider(color: PdfColors.grey300, height: 1),
           pw.SizedBox(height: 4),
 
-          // Subtotal
-          _buildPdfTotalRow('Subtotal', '$currencySymbol $subtotal', font, fontBold),
-
-          // Tax
+          _buildPdfTotalRow('Subtotal', '$currencySymbol $subtotal', font),
           if (tax != null && tax != '0.000')
-            _buildPdfTotalRow('Tax', '$currencySymbol $tax', font, fontBold),
-
-          // Discount
+            _buildPdfTotalRow('Tax', '$currencySymbol $tax', font),
           if (discount != null && discount != '0.000')
-            _buildPdfTotalRow('Discount', '- $currencySymbol $discount', font, fontBold, isNegative: true),
+            _buildPdfTotalRow('Discount', '- $currencySymbol $discount', font, isNegative: true),
 
           pw.SizedBox(height: 4),
           pw.Container(height: 2, color: PdfColors.black),
           pw.SizedBox(height: 4),
 
-          // Grand Total
           pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [
             pw.Text('TOTAL', style: pw.TextStyle(font: fontBold, fontSize: 14)),
             pw.Text('$currencySymbol $grandTotal', style: pw.TextStyle(font: fontBold, fontSize: 14)),
@@ -343,7 +299,6 @@ class PrintService {
           pw.Divider(color: PdfColors.grey300, height: 1),
           pw.SizedBox(height: 8),
 
-          // Footer
           pw.Center(
             child: pw.Text(footer,
                 style: pw.TextStyle(font: font, fontSize: 9, color: PdfColors.grey600),
@@ -352,7 +307,6 @@ class PrintService {
 
           pw.SizedBox(height: 8),
 
-          // Barcode
           pw.Center(
             child: pw.BarcodeWidget(
               barcode: pw.Barcode.code128(),
@@ -374,7 +328,7 @@ class PrintService {
     return pdf.save();
   }
 
-  pw.Widget _buildPdfTotalRow(String label, String value, pw.Font font, pw.Font fontBold, {bool isNegative = false}) {
+  pw.Widget _buildPdfTotalRow(String label, String value, pw.Font font, {bool isNegative = false}) {
     return pw.Padding(
       padding: pw.EdgeInsets.symmetric(vertical: 1),
       child: pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [
@@ -407,7 +361,6 @@ class PrintService {
     String currencySymbol = 'KD',
   }) {
     final buffer = StringBuffer();
-
     buffer.writeln('''
 <div class="receipt">
   <div class="header">
@@ -437,13 +390,11 @@ class PrintService {
         <td class="right">$currencySymbol ${item['unit_price']}</td>
         <td class="right bold">$currencySymbol ${item['line_total']}</td>
       </tr>''');
-
       if (item['discount'] != null && item['discount'] != '0.000') {
         buffer.writeln('''
       <tr class="discount-row">
         <td>&nbsp; Discount</td>
-        <td></td>
-        <td></td>
+        <td></td><td></td>
         <td class="right">- $currencySymbol ${item['discount']}</td>
       </tr>''');
       }
@@ -473,7 +424,6 @@ class PrintService {
     for (final p in payments) {
       buffer.writeln('    <div class="payment-row"><span>${p['method']}</span><span>$currencySymbol ${p['amount']}</span></div>');
     }
-
     if (change != null && change != '0.000') {
       buffer.writeln('    <div class="payment-row"><span>Change</span><span class="bold">$currencySymbol $change</span></div>');
     }
@@ -489,81 +439,5 @@ class PrintService {
 </div>''');
 
     return buffer.toString();
-  }
-
-  String _buildPrintDocument(String receiptHtml, PaperSize paperSize) {
-    String pageCss;
-    switch (paperSize) {
-      case PaperSize.thermal80:
-        pageCss = '''
-          @page { size: 80mm auto; margin: 2mm 4mm; }
-          .receipt { width: 72mm; font-family: "Courier New", Courier, monospace; font-size: 11px; }
-          .business-name { font-size: 14px; font-weight: bold; }
-          .items { font-size: 10px; }
-          .col-item { width: 40%; } .col-qty { width: 12%; } .col-price { width: 22%; } .col-total { width: 26%; }
-        ''';
-        break;
-      case PaperSize.thermal58:
-        pageCss = '''
-          @page { size: 58mm auto; margin: 1mm 3mm; }
-          .receipt { width: 52mm; font-family: "Courier New", Courier, monospace; font-size: 9px; }
-          .business-name { font-size: 12px; font-weight: bold; }
-          .items { font-size: 8px; }
-          .col-item { width: 38%; } .col-qty { width: 12%; } .col-price { width: 22%; } .col-total { width: 28%; }
-        ''';
-        break;
-      case PaperSize.regular:
-        pageCss = '''
-          @page { size: A4; margin: 15mm; }
-          .receipt { width: 100%; max-width: 80mm; margin: 0 auto; font-family: "Courier New", Courier, monospace; font-size: 12px; }
-          .business-name { font-size: 20px; font-weight: bold; }
-          .items { font-size: 11px; }
-          .col-item { width: 40%; } .col-qty { width: 12%; } .col-price { width: 22%; } .col-total { width: 26%; }
-        ''';
-        break;
-    }
-
-    return '''
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <title>Receipt</title>
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { background: #f5f5f5; }
-    $pageCss
-    .receipt { background: white; padding: 12px; margin: 0 auto; }
-    @media screen { body { display: flex; justify-content: center; align-items: flex-start; min-height: 100vh; padding: 20px; } .receipt { box-shadow: 0 2px 8px rgba(0,0,0,0.15); border-radius: 4px; max-width: 400px; } }
-    @media print { body { background: white; padding: 0; } }
-    .header { text-align: center; margin-bottom: 8px; }
-    .business-name { text-transform: uppercase; letter-spacing: 1px; }
-    .subtitle { font-size: 10px; color: #666; margin-top: 2px; }
-    .invoice-no { text-align: center; font-weight: bold; background: #f0f0f0; padding: 3px 8px; margin: 6px 0; display: inline-block; width: 100%; letter-spacing: 1px; }
-    .meta { text-align: center; font-size: 10px; color: #666; }
-    hr { border: none; border-top: 1px dashed #ccc; margin: 8px 0; }
-    hr.thick { border-top: 2px solid #000; margin: 6px 0; }
-    .items { width: 100%; border-collapse: collapse; margin: 6px 0; }
-    .items th { text-align: left; font-weight: bold; padding: 3px 0; border-bottom: 1px solid #000; font-size: 10px; }
-    .items td { padding: 3px 0; vertical-align: top; }
-    .center { text-align: center; } .right { text-align: right; } .bold { font-weight: bold; }
-    .discount-row td { color: #c00; font-size: 9px; }
-    .totals { margin: 4px 0; }
-    .total-row { display: flex; justify-content: space-between; padding: 2px 0; font-size: 11px; }
-    .total-row.negative { color: #c00; }
-    .grand-total { font-size: 15px; font-weight: bold; padding: 4px 0; }
-    .payment-box { background: #f9f9f9; padding: 6px 8px; border-radius: 3px; margin: 8px 0; }
-    .payment-title { font-weight: bold; font-size: 10px; margin-bottom: 4px; }
-    .payment-row { display: flex; justify-content: space-between; font-size: 11px; padding: 1px 0; }
-    .footer { text-align: center; font-style: italic; font-size: 10px; color: #666; margin: 8px 0; }
-    .barcode { text-align: center; margin-top: 8px; }
-    .barcode img { max-width: 180px; height: auto; }
-    .barcode-text { font-size: 8px; color: #999; letter-spacing: 1px; margin-top: 2px; }
-  </style>
-</head>
-<body>
-  $receiptHtml
-</body>
-</html>''';
   }
 }

@@ -6,8 +6,6 @@ import 'package:vendify_pos/models/cart_item.dart';
 import 'package:barcode_widget/barcode_widget.dart';
 import 'package:vendify_pos/services/print_service.dart';
 import 'package:vendify_pos/screens/pos/widgets/print_settings_dialog.dart';
-// ignore: avoid_web_libraries_in_flutter
-import 'dart:html' as html;
 
 class ReceiptPreview extends StatefulWidget {
   final String invoiceNumber;
@@ -606,27 +604,16 @@ class _ReceiptPreviewState extends State<ReceiptPreview> {
   }
 
   void _shareReceipt() async {
-    final text = _generateReceiptText();
-    
-    // Try Web Share API first (works on mobile browsers)
-    try {
-      await html.window.navigator.share({
-        'text': text,
-        'title': 'Receipt $_receiptPrefix${widget.invoiceNumber}',
-      });
-      return;
-    } catch (_) {
-      // Web Share API not available or failed
-    }
-    
-    // Fallback: copy to clipboard
+    // Copy to clipboard as the universal fallback across all platforms
     _copyToClipboard();
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Receipt copied to clipboard'),
-        backgroundColor: AppTheme.success,
-      ),
-    );
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Receipt copied to clipboard'),
+          backgroundColor: AppTheme.success,
+        ),
+      );
+    }
   }
 
   void _printReceipt() async {
