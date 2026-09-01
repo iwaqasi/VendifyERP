@@ -1,0 +1,64 @@
+/node_modules
+/public/hot
+/public/storage
+/storage/*.key
+/storage/
+/vendor
+/.idea
+/.vagrant
+Homestead.json
+Homestead.yaml
+npm-debug.log
+.env
+/public/uploads/business_logos
+/public/uploads/documents
+/public/uploads/img
+/public/uploads/media
+/public/uploads/invoice_logos
+/public/uploads/UltimatePOS
+/public/uploads/temp
+/public/css/
+/public/fonts/
+/public/images/
+/public/modules/
+/public/mix-manifest.json
+.scribe
+/public/docs
+/public/js/skins/
+/public/js/icons/
+
+# Build artifacts
+/build
+*.log
+*.pyc
+*.swp
+.DS_Store
+
+# IDE
+*.iml
+.idea/
+.vscode/
+
+# Freebuff / AI assistant
+.freebuff/
+.aider.*
+.claude/
+aide_assistant/
+
+# Temporary / local files
+cookies.txt
+uninstall_aide.bat
+
+# Flutter build output
+vendify_pos/build/
+vendify_pos/.dart_tool/
+vendify_pos/.flutter-plugins-dependencies
+vendify_cms/build/
+vendify_cms/.dart_tool/
+vendify_cms/.flutter-plugins-dependencies
+
+# Flutter IDE
+vendify_pos/.idea/
+vendify_pos/*.iml
+vendify_cms/.idea/
+vendify_cms/*.iml

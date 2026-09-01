@@ -1,0 +1,72 @@
+
+// Body
+$body-bg: #FFFFFF;
+
+// Borders
+$laravel-border-color: #E2E8F0;
+$list-group-border: $laravel-border-color;
+$navbar-default-border: $laravel-border-color;
+$panel-default-border: $laravel-border-color;
+$panel-inner-border: $laravel-border-color;
+
+// Brands - Professional Color Palette
+$brand-primary: #1E3A5F;
+$brand-primary-light: #2E5A8A;
+$brand-secondary: #334155;
+$brand-accent: #0D9488;
+$brand-accent-light: #14B8A6;
+$brand-info: #2E5A8A;
+$brand-success: #0D9488;
+$brand-warning: #F97316;
+$brand-danger: #DC2626;
+
+// Typography
+$icon-font-path: "~bootstrap-sass/assets/fonts/bootstrap/";
+$font-family-sans-serif: "Rubik", "Nunito Sans", sans-serif;
+$font-size-base: 14px;
+$line-height-base: 1.6;
+$text-color: #0F172A;
+$text-muted: #64748B;
+
+// Navbar
+$navbar-default-bg: #FFFFFF;
+
+// Buttons
+$btn-default-color: $text-color;
+$btn-primary-bg: $brand-primary;
+$btn-primary-border: $brand-primary;
+$btn-primary-color: #FFFFFF;
+$btn-primary-hover-bg: $brand-primary-light;
+$btn-primary-hover-border: $brand-primary-light;
+$btn-secondary-bg: $brand-secondary;
+$btn-secondary-border: $brand-secondary;
+$btn-secondary-color: #FFFFFF;
+$btn-secondary-hover-bg: #475569;
+$btn-secondary-hover-border: #475569;
+$btn-accent-bg: $brand-accent;
+$btn-accent-border: $brand-accent;
+$btn-accent-color: #FFFFFF;
+$btn-accent-hover-bg: $brand-accent-light;
+$btn-accent-hover-border: $brand-accent-light;
+
+// Inputs
+$input-border: #E2E8F0;
+$input-border-focus: $brand-accent;
+$input-color-placeholder: $text-muted;
+$input-bg: #FFFFFF;
+$input-color: $text-color;
+
+// Panels
+$panel-default-heading-bg: #FFFFFF;
+$panel-default-heading-color: $text-color;
+$panel-default-body-bg: #FFFFFF;
+
+// Surface colors
+$surface-bg: #F8FAFC;
+$surface-border: #E2E8F0;
+
+// Shadows
+$shadow-sm: 0 1px 2px 0 rgba(15, 23, 42, 0.05);
+$shadow-md: 0 4px 6px -1px rgba(15, 23, 42, 0.1), 0 2px 4px -2px rgba(15, 23, 42, 0.1);
+$shadow-lg: 0 10px 15px -3px rgba(15, 23, 42, 0.1), 0 4px 6px -4px rgba(15, 23, 42, 0.1);
+$shadow-xl: 0 20px 25px -5px rgba(15, 23, 42, 0.1), 0 8px 10px -6px rgba(15, 23, 42, 0.1);

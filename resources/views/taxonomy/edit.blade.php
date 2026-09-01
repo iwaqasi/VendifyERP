@@ -1,0 +1,76 @@
+<div class="modal-dialog" role="document">
+  <div class="modal-content">
+
+    {!! Form::open(['url' => action([\App\Http\Controllers\TaxonomyController::class, 'update'], [$category->id]), 'method' => 'PUT', 'id' => 'category_edit_form' ]) !!}
+
+    <div class="modal-header">
+      <button type="button" class="close" data-dismiss="modal" aria-label="Close"><span aria-hidden="true">&times;</span></button>
+      <h4 class="modal-title">@lang( 'messages.edit' )</h4>
+    </div>
+
+    <div class="modal-body">
+      @php
+        $name_label = !empty($module_category_data['taxonomy_label']) ? $module_category_data['taxonomy_label'] : __( 'category.category_name' );
+        $cat_code_enabled = isset($module_category_data['enable_taxonomy_code']) && !$module_category_data['enable_taxonomy_code'] ? false : true;
+
+        $cat_code_label = !empty($module_category_data['taxonomy_code_label']) ? $module_category_data['taxonomy_code_label'] : __( 'category.code' );
+
+        $enable_sub_category = isset($module_category_data['enable_sub_taxonomy']) && !$module_category_data['enable_sub_taxonomy'] ? false : true;
+
+        $category_code_help_text = !empty($module_category_data['taxonomy_code_help_text']) ? $module_category_data['taxonomy_code_help_text'] : __('lang_v1.category_code_help');
+      @endphp
+      <div class="form-group">
+        {!! Form::label('name', $name_label . ':*') !!}
+        {!! Form::text('name', $category->name, ['class' => 'form-control', 'required', 'placeholder' => $name_label]); !!}
+      </div>
+      @if($cat_code_enabled)
+      <div class="form-group">
+        {!! Form::label('short_code', $cat_code_label . ':') !!}
+        {!! Form::text('short_code', $category->short_code, ['class' => 'form-control', 'placeholder' => $cat_code_label]); !!}
+          <p class="help-block">{!! $category_code_help_text !!}</p>
+      </div>
+      @endif
+      <div class="form-group">
+        {!! Form::label('description', __( 'lang_v1.description' ) . ':') !!}
+        {!! Form::textarea('description', $category->description, ['class' => 'form-control', 'placeholder' => __( 'lang_v1.description'), 'rows' => 3]); !!}
+      </div>
+      <div class="form-group">
+        {!! Form::label('image', __('lang_v1.image') . ':') !!}
+        @if(!empty($category->image))
+          <div id="existing_image" style="margin-bottom: 10px;">
+            <img src="{{ $category->image_url }}" alt="{{ $category->name }}" style="max-width: 100px; max-height: 100px; border-radius: 8px; border: 1px solid #ddd;">
+            <button type="button" class="btn btn-danger btn-xs" id="remove_category_image" data-category-id="{{ $category->id }}" style="margin-left: 5px;">
+              <i class="fa fa-trash"></i> Remove
+            </button>
+          </div>
+        @endif
+        <input type="file" name="image" accept="image/*" class="form-control" id="category_image_input">
+        <div id="category_image_preview" style="margin-top: 10px;">
+          <img id="category_preview_img" src="#" alt="Preview" style="max-width: 150px; max-height: 150px; display: none; border-radius: 8px; border: 1px solid #ddd;">
+        </div>
+        <p class="help-block">Upload a category image (optional). Recommended size: 200x200px</p>
+      </div>
+      @if(!empty($parent_categories) && $enable_sub_category)
+          <div class="form-group">
+            <div class="checkbox">
+              <label>
+                 {!! Form::checkbox('add_as_sub_cat', 1, !$is_parent,[ 'class' => 'toggler', 'data-toggle_id' => 'parent_cat_div' ]); !!} @lang( 'lang_v1.add_as_sub_txonomy' )
+              </label>
+            </div>
+          </div>
+          <div class="form-group @if($is_parent) {{'hide' }} @endif" id="parent_cat_div">
+            {!! Form::label('parent_id', __( 'lang_v1.select_parent_taxonomy' ) . ':') !!}
+            {!! Form::select('parent_id', $parent_categories, $selected_parent, ['class' => 'form-control']); !!}
+          </div>
+      @endif
+    </div>
+
+    <div class="modal-footer">
+      <button type="submit" class="tw-dw-btn tw-dw-btn-primary tw-text-white">@lang( 'messages.update' )</button>
+      <button type="button" class="tw-dw-btn tw-dw-btn-neutral tw-text-white" data-dismiss="modal">@lang( 'messages.close' )</button>
+    </div>
+
+    {!! Form::close() !!}
+
+  </div><!-- /.modal-content -->
+</div><!-- /.modal-dialog -->
