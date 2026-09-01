@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/material.dart';
 import 'package:vendify_pos/config/theme.dart';
 import 'package:vendify_pos/services/pos_service.dart';
+import 'package:vendify_pos/services/print_service.dart';
 
 class OrderHistoryScreen extends ConsumerStatefulWidget {
   const OrderHistoryScreen({super.key});
@@ -164,10 +165,24 @@ class _OrderHistoryScreenState extends ConsumerState<OrderHistoryScreen> {
                 ),
               ),
 
-              // Amount & Status
+              // Print button + Amount & Status
               Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
+                  // Reprint button
+                  InkWell(
+                    onTap: () => _reprintReceipt(order),
+                    borderRadius: BorderRadius.circular(6),
+                    child: Container(
+                      padding: const EdgeInsets.all(4),
+                      decoration: BoxDecoration(
+                        color: AppTheme.primary.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: const Icon(Icons.print, size: 18, color: AppTheme.primary),
+                    ),
+                  ),
+                  const SizedBox(height: 6),
                   Text(
                     'KD ${total.toStringAsFixed(3)}',
                     style: const TextStyle(
@@ -209,6 +224,69 @@ class _OrderHistoryScreenState extends ConsumerState<OrderHistoryScreen> {
       return '${months[date.month - 1]} ${date.day}, ${date.hour}:${date.minute.toString().padLeft(2, '0')}';
     } catch (_) {
       return dateStr;
+    }
+  }
+
+  void _reprintReceipt(dynamic order) async {
+    final printService = PrintService();
+    final invoiceNo = order['invoice_no'] ?? '#${order['id']}';
+    final contactName = order['contact'] != null
+        ? order['contact']['name']
+        : 'Walk-in Customer';
+    final total = (order['final_total'] ?? 0).toDouble();
+    final date = order['transaction_date'] ?? '';
+    final payments = (order['payment_lines'] as List?) ?? [];
+
+    // Build items from sell_lines if available
+    final sellLines = (order['sell_lines'] as List?) ?? [];
+    final items = sellLines.map<Map<String, dynamic>>((line) {
+      final product = line['product'] ?? {};
+      return {
+        'name': product['name'] ?? 'Item',
+        'quantity': '${(line['quantity'] ?? 0)}',
+        'unit_price': (line['unit_price'] ?? 0).toStringAsFixed(3),
+        'line_total': ((line['unit_price'] ?? 0) * (line['quantity'] ?? 0)).toStringAsFixed(3),
+        'discount': null,
+      };
+    }).toList();
+
+    // Fallback if no sell lines: show single total line
+    if (items.isEmpty) {
+      items.add({
+        'name': 'Sale #$invoiceNo',
+        'quantity': '1',
+        'unit_price': total.toStringAsFixed(3),
+        'line_total': total.toStringAsFixed(3),
+        'discount': null,
+      });
+    }
+
+    final receiptHtml = printService.buildReceiptHtml(
+      businessName: 'Vendify POS',
+      invoiceNumber: '$invoiceNo',
+      invoicePrefix: '',
+      dateTime: date,
+      customerName: contactName,
+      items: items,
+      subtotal: total.toStringAsFixed(3),
+      grandTotal: total.toStringAsFixed(3),
+      payments: payments.map<Map<String, dynamic>>((p) => {
+        'method': (p['method'] ?? 'cash').toString().toUpperCase(),
+        'amount': (p['amount'] ?? 0).toStringAsFixed(3),
+      }).toList(),
+      footer: 'Thank you for your purchase!',
+      currencySymbol: 'KD',
+    );
+
+    await printService.printHtml(receiptHtml);
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Printing receipt #$invoiceNo'),
+          backgroundColor: AppTheme.primary,
+        ),
+      );
     }
   }
 }

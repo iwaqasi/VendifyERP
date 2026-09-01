@@ -4,6 +4,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:vendify_pos/config/theme.dart';
 import 'package:vendify_pos/models/cart_item.dart';
 import 'package:barcode_widget/barcode_widget.dart';
+import 'package:vendify_pos/services/print_service.dart';
+import 'package:vendify_pos/screens/pos/widgets/print_settings_dialog.dart';
+// ignore: avoid_web_libraries_in_flutter
+import 'dart:html' as html;
 
 class ReceiptPreview extends StatefulWidget {
   final String invoiceNumber;
@@ -41,6 +45,7 @@ class _ReceiptPreviewState extends State<ReceiptPreview> {
   String _receiptFooter = 'Thank you for your purchase!';
   String _businessName = 'VendifyERP';
   bool _isLoading = true;
+  final PrintService _printService = PrintService();
 
   @override
   void initState() {
@@ -130,44 +135,59 @@ class _ReceiptPreviewState extends State<ReceiptPreview> {
               decoration: const BoxDecoration(
                 border: Border(top: BorderSide(color: AppTheme.border)),
               ),
-              child: Row(
+              child: Column(
                 children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: _copyToClipboard,
-                      icon: const Icon(Icons.copy, size: 18),
-                      label: const Text('Copy'),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: AppTheme.textSecondary,
-                        side: const BorderSide(color: AppTheme.border),
-                        padding: const EdgeInsets.symmetric(vertical: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: _copyToClipboard,
+                          icon: const Icon(Icons.copy, size: 18),
+                          label: const Text('Copy'),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: AppTheme.textSecondary,
+                            side: const BorderSide(color: AppTheme.border),
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                          ),
+                        ),
                       ),
-                    ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: _shareReceipt,
+                          icon: const Icon(Icons.share, size: 18),
+                          label: const Text('Share'),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: AppTheme.primary,
+                            side: const BorderSide(color: AppTheme.primary),
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          onPressed: _printReceipt,
+                          icon: const Icon(Icons.print, size: 18),
+                          label: const Text('Print'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppTheme.primary,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: _shareReceipt,
-                      icon: const Icon(Icons.share, size: 18),
-                      label: const Text('Share'),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: AppTheme.primary,
-                        side: const BorderSide(color: AppTheme.primary),
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: ElevatedButton.icon(
-                      onPressed: _printReceipt,
-                      icon: const Icon(Icons.print, size: 18),
-                      label: const Text('Print'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppTheme.primary,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                      ),
+                  const SizedBox(height: 8),
+                  // Print settings link
+                  TextButton.icon(
+                    onPressed: _openPrintSettings,
+                    icon: const Icon(Icons.settings, size: 16),
+                    label: const Text('Print Settings'),
+                    style: TextButton.styleFrom(
+                      foregroundColor: AppTheme.textMuted,
+                      padding: const EdgeInsets.symmetric(vertical: 4),
                     ),
                   ),
                 ],
@@ -585,23 +605,71 @@ class _ReceiptPreviewState extends State<ReceiptPreview> {
     );
   }
 
-  void _shareReceipt() {
-    // Share functionality would use share_plus package
+  void _shareReceipt() async {
+    final text = _generateReceiptText();
+    
+    // Try Web Share API first (works on mobile browsers)
+    try {
+      await html.window.navigator.share({
+        'text': text,
+        'title': 'Receipt $_receiptPrefix${widget.invoiceNumber}',
+      });
+      return;
+    } catch (_) {
+      // Web Share API not available or failed
+    }
+    
+    // Fallback: copy to clipboard
+    _copyToClipboard();
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
-        content: Text('Share functionality coming soon'),
+        content: Text('Receipt copied to clipboard'),
+        backgroundColor: AppTheme.success,
       ),
     );
   }
 
-  void _printReceipt() {
-    // Print functionality - copy to clipboard for thermal printer
-    _copyToClipboard();
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Receipt copied for printing'),
-        backgroundColor: AppTheme.primary,
-      ),
+  void _printReceipt() async {
+    // Build receipt HTML using PrintService
+    final receiptHtml = _printService.buildReceiptHtml(
+      businessName: _businessName,
+      invoiceNumber: widget.invoiceNumber,
+      invoicePrefix: _receiptPrefix,
+      dateTime: DateTime.now().toString().substring(0, 19),
+      customerName: widget.customerName,
+      items: widget.cartItems.map((item) => {
+        'name': item.productName,
+        'quantity': '${item.quantity.toInt()}',
+        'unit_price': item.unitPrice.toStringAsFixed(3),
+        'line_total': item.lineTotal.toStringAsFixed(3),
+        'discount': item.discountAmount > 0 ? item.discountAmount.toStringAsFixed(3) : null,
+      }).toList(),
+      subtotal: widget.subtotal.toStringAsFixed(3),
+      tax: widget.tax > 0 ? widget.tax.toStringAsFixed(3) : null,
+      discount: widget.discount > 0 ? widget.discount.toStringAsFixed(3) : null,
+      grandTotal: widget.grandTotal.toStringAsFixed(3),
+      payments: widget.payments.map((p) => {
+        'method': _getPaymentMethodLabel(p['method'] ?? ''),
+        'amount': (p['amount'] ?? 0).toStringAsFixed(3),
+      }).toList(),
+      change: widget.change > 0 ? widget.change.toStringAsFixed(3) : null,
+      footer: _receiptFooter,
+      currencySymbol: _currencySymbol,
     );
+    
+    await _printService.printHtml(receiptHtml);
+    
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Print dialog opened'),
+          backgroundColor: AppTheme.primary,
+        ),
+      );
+    }
+  }
+
+  void _openPrintSettings() async {
+    await PrintSettingsDialog.show(context);
   }
 }

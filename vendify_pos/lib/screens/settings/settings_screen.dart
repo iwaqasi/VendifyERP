@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import 'package:vendify_pos/config/theme.dart';
 import 'package:vendify_pos/config/api_config.dart';
 import 'package:vendify_pos/providers/theme_provider.dart';
+import 'package:vendify_pos/screens/pos/widgets/print_settings_dialog.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
@@ -264,6 +265,47 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           const SizedBox(height: 8),
           _buildInfoTile('Business Name', 'VendifyERP', isDark),
           _buildInfoTile('Location', 'Main Store', isDark),
+
+          const SizedBox(height: 24),
+          const Divider(),
+          const SizedBox(height: 16),
+
+          // Print Settings
+          _buildSectionHeader('Printing', isDark),
+          const SizedBox(height: 8),
+          Container(
+            margin: const EdgeInsets.only(bottom: 8),
+            decoration: BoxDecoration(
+              color: isDark ? AppTheme.surface : AppTheme.lightSurface,
+              borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+              border: Border.all(color: isDark ? AppTheme.border : AppTheme.lightBorder),
+            ),
+            child: ListTile(
+              leading: Icon(
+                Icons.print,
+                color: AppTheme.primary,
+              ),
+              title: Text(
+                'Printer Settings',
+                style: TextStyle(
+                  color: isDark ? AppTheme.textPrimary : AppTheme.lightTextPrimary,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              subtitle: Text(
+                'Paper size, copies, auto-print',
+                style: TextStyle(
+                  color: isDark ? AppTheme.textSecondary : AppTheme.lightTextSecondary,
+                  fontSize: 12,
+                ),
+              ),
+              trailing: Icon(
+                Icons.chevron_right,
+                color: isDark ? AppTheme.textSecondary : AppTheme.lightTextSecondary,
+              ),
+              onTap: () => PrintSettingsDialog.show(context),
+            ),
+          ),
 
           const SizedBox(height: 24),
           const Divider(),
