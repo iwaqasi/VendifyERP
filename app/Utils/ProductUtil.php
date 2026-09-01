@@ -357,8 +357,9 @@ class ProductUtil extends Util
 
         $product = Product::find($product_id);
 
-        //Check if stock is enabled or not.
-        if ($product->enable_stock == 1 && $qty_difference != 0) {
+        //Update quantity in variation_location_details
+        //Always track stock when qty changes, regardless of enable_stock flag
+        if ($qty_difference != 0) {
             $variation = Variation::where('id', $variation_id)
                             ->where('product_id', $product_id)
                             ->first();
@@ -402,28 +403,26 @@ class ProductUtil extends Util
 
         $product = Product::find($product_id);
 
-        //Check if stock is enabled or not.
-        if ($product->enable_stock == 1) {
-            //Decrement Quantity in variations location table
-            $details = VariationLocationDetails::where('variation_id', $variation_id)
-                ->where('product_id', $product_id)
-                ->where('location_id', $location_id)
-                ->first();
+        //Always track stock when qty changes
+        //Decrement Quantity in variations location table
+        $details = VariationLocationDetails::where('variation_id', $variation_id)
+            ->where('product_id', $product_id)
+            ->where('location_id', $location_id)
+            ->first();
 
-            //If location details not exists create new one
-            if (empty($details)) {
-                $variation = Variation::find($variation_id);
-                $details = VariationLocationDetails::create([
-                    'product_id' => $product_id,
-                    'location_id' => $location_id,
-                    'variation_id' => $variation_id,
-                    'product_variation_id' => $variation->product_variation_id,
-                    'qty_available' => 0,
-                ]);
-            }
-
-            $details->decrement('qty_available', $qty_difference);
+        //If location details not exists create new one
+        if (empty($details)) {
+            $variation = Variation::find($variation_id);
+            $details = VariationLocationDetails::create([
+                'product_id' => $product_id,
+                'location_id' => $location_id,
+                'variation_id' => $variation_id,
+                'product_variation_id' => $variation->product_variation_id,
+                'qty_available' => 0,
+            ]);
         }
+
+        $details->decrement('qty_available', $qty_difference);
 
         return true;
     }
@@ -1856,7 +1855,14 @@ class ProductUtil extends Util
                   JOIN purchase_lines AS pl ON transactions.id=pl.transaction_id
                   WHERE (transactions.status='received' OR transactions.type='purchase_return')  AND transactions.location_id=vld.location_id 
                   AND (pl.variation_id=variations.id)) as stock_price"),
-            DB::raw('SUM(vld.qty_available) as stock'),
+            DB::raw('COALESCE(SUM(vld.qty_available), (
+                SELECT COALESCE(SUM(CASE WHEN t.type = "sell" THEN -1 * tsl.quantity ELSE tsl.quantity END), 0)
+                FROM transaction_sell_lines tsl
+                JOIN transactions t ON tsl.transaction_id = t.id
+                WHERE tsl.variation_id = variations.id
+                AND t.is_quotation = 0
+                AND t.type IN ("sell", "purchase")
+            )) as stock'),
             'variations.sub_sku as sku',
             'p.name as product',
             'p.type',
@@ -2268,7 +2274,14 @@ class ProductUtil extends Util
                     LEFT JOIN transaction_sell_lines AS TSL ON transactions.id=TSL.transaction_id
                     WHERE transactions.status='final' AND transactions.type='production_sell' AND transactions.location_id=$location_id 
                     AND TSL.variation_id=variations.id) as total_ingredients_used"),
-            DB::raw('SUM(vld.qty_available) as stock'),
+            DB::raw('COALESCE(SUM(vld.qty_available), (
+                SELECT COALESCE(SUM(CASE WHEN t.type = "sell" THEN -1 * tsl.quantity ELSE tsl.quantity END), 0)
+                FROM transaction_sell_lines tsl
+                JOIN transactions t ON tsl.transaction_id = t.id
+                WHERE tsl.variation_id = variations.id
+                AND t.is_quotation = 0
+                AND t.type IN ("sell", "purchase")
+            )) as stock'),
             'variations.sub_sku as sub_sku',
             'p.name as product',
             'p.id as product_id',

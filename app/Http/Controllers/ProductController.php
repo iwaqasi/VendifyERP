@@ -131,7 +131,14 @@ class ProductController extends Controller
                 'products.product_custom_field16', 'products.product_custom_field17', 'products.product_custom_field18', 
                 'products.product_custom_field19', 'products.product_custom_field20',
                 'products.alert_quantity',
-                DB::raw('SUM(vld.qty_available) as current_stock'),
+                DB::raw('COALESCE(SUM(vld.qty_available), (
+                    SELECT COALESCE(SUM(CASE WHEN t.type = "sell" THEN -1 * tsl.quantity ELSE tsl.quantity END), 0)
+                    FROM transaction_sell_lines tsl
+                    JOIN transactions t ON tsl.transaction_id = t.id
+                    WHERE tsl.variation_id = v.id
+                    AND t.is_quotation = 0
+                    AND t.type IN ("sell", "purchase")
+                )) as current_stock'),
                 DB::raw('MAX(v.sell_price_inc_tax) as max_price'),
                 DB::raw('MIN(v.sell_price_inc_tax) as min_price'),
                 DB::raw('MAX(v.dpp_inc_tax) as max_purchase_price'),
