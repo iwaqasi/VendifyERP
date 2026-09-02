@@ -159,7 +159,6 @@ class SellControllerTest extends TestCase
         //   base = 220 / 1.10 = 200, tax = 20.
         $inclProduct = $this->createPosProduct([
             'tax_type' => 'inclusive',
-        ], [
             'variation' => [
                 'default_sell_price' => 100,
                 'sell_price_inc_tax' => 110, // 100 + 10% tax

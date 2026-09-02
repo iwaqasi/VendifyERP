@@ -183,8 +183,8 @@ class AuthController extends BaseApiController
      */
     public function revokeDevice(Request $request, string $id): JsonResponse
     {
-        // Validate the ID is numeric to avoid unexpected query behaviour.
-        if (! ctype_digit((string) $id)) {
+        // Validate the ID is a valid token identifier (numeric or UUID).
+        if (! ctype_digit((string) $id) && ! preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i', $id)) {
             return $this->errorResponse('Invalid device session ID.', 422);
         }
 
@@ -194,7 +194,7 @@ class AuthController extends BaseApiController
             return $this->errorResponse('This is the current session. Use logout instead.', 422);
         }
 
-        $token = $request->user()->tokens()->where('id', (int) $id)->first();
+        $token = $request->user()->tokens()->where('id', $id)->first();
 
         if (!$token) {
             return $this->errorResponse('Device session not found.', 404);
