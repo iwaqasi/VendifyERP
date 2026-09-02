@@ -39,6 +39,7 @@
         "myfatoorah/laravel-package": "^2.2",
         "nwidart/laravel-menus": "^6.0",
         "nwidart/laravel-modules": "^9.0",
+        "nyholm/psr7": "*",
         "openai-php/laravel": "^0.4.1",
         "propaganistas/laravel-disposable-email": "*",
         "pusher/pusher-php-server": "^5.0",
@@ -49,6 +50,7 @@
         "spatie/laravel-permission": "^5.9",
         "srmklive/paypal": "^3.0",
         "stripe/stripe-php": "^7.122",
+        "symfony/http-client": "*",
         "unicodeveloper/laravel-paystack": "^1.0",
         "yajra/laravel-datatables-oracle": "^9.0"
     },
@@ -107,6 +109,11 @@
         "allow-plugins": {
             "ocramius/package-versions": true,
             "php-http/discovery": true
+        },
+        "policy": {
+            "advisories": {
+                "block": false
+            }
         }
     },
     "minimum-stability": "dev",
