@@ -107,8 +107,12 @@ class AccountingServiceProvider extends ServiceProvider
      */
     public function registerFactories()
     {
+        // Illuminate\Database\Eloquent\Factory was removed in Laravel 9.
+        // Skip silently if the class is unavailable.
         if (! app()->environment('production') && $this->app->runningInConsole()) {
-            app(Factory::class)->load(__DIR__.'/../Database/factories');
+            if (class_exists(Factory::class)) {
+                app(Factory::class)->load(__DIR__.'/../Database/factories');
+            }
         }
     }
 
