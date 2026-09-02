@@ -149,7 +149,9 @@ class SuperadminServiceProvider extends ServiceProvider
     public function registerFactories()
     {
         if (! app()->environment('production') && $this->app->runningInConsole()) {
-            app(Factory::class)->load(__DIR__.'/../Database/factories');
+            if (class_exists(Factory::class)) {
+                app(Factory::class)->load(__DIR__.'/../Database/factories');
+            }
         }
     }
 
