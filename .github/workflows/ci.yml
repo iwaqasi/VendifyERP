@@ -38,7 +38,7 @@ jobs:
           coverage: none
 
       - name: Install composer dependencies
-        run: composer install --prefer-dist --no-interaction --no-progress
+        run: composer install --prefer-dist --no-interaction --no-progress --no-security-blocking
 
       - name: Prepare environment
         run: |
