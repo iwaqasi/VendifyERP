@@ -45,6 +45,10 @@ Route::middleware('auth:api')->group(function () {
     Route::get('/v1/auth/me', [\App\Http\Controllers\Api\V1\AuthController::class, 'user']);
     Route::post('/v1/auth/switch-business', [\App\Http\Controllers\Api\V1\AuthController::class, 'switchBusiness']);
 
+    // --- Device session management (token lifecycle) ---
+    Route::get('/v1/auth/devices', [\App\Http\Controllers\Api\V1\AuthController::class, 'devices']);
+    Route::delete('/v1/auth/devices/{id}', [\App\Http\Controllers\Api\V1\AuthController::class, 'revokeDevice']);
+
     // --- License Check Endpoint (fail-closed: never grants on error) ---
     Route::get('/v1/license/check', [\App\Http\Controllers\Api\V1\LicenseController::class, 'check']);
 
@@ -154,6 +158,7 @@ Route::middleware('auth:api')->group(function () {
 // because this file is loaded with ->middleware('api').
 // ============================================================
 Route::group(['middleware' => 'api'], function () {
+    Route::get('/v1/cms/config', [\App\Http\Controllers\Api\V1\CmsController::class, 'config']);
     Route::get('/v1/cms/home', [\App\Http\Controllers\Api\V1\CmsController::class, 'home']);
     Route::get('/v1/cms/pages/{slug}', [\App\Http\Controllers\Api\V1\CmsController::class, 'page']);
     Route::get('/v1/cms/posts', [\App\Http\Controllers\Api\V1\CmsController::class, 'posts']);
