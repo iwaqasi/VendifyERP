@@ -65,7 +65,12 @@ void main() {
         isFalse,
         reason: 'Production URL must be injected via --dart-define at build time',
       );
-      expect(ApiConfig.businessId, greaterThan(0));
+      // Tenant identity is resolved at RUNTIME via the cms/config endpoint —
+      // it must never be baked into the binary (multi-tenant requirement).
+      expect(ApiConfig.hasRuntimeConfig, isFalse);
+      expect(ApiConfig.businessSlug, isEmpty);
+      // The legacy hard-coded production tenant id (3) must never return.
+      expect(ApiConfig.fallbackBusinessId, isNot(3));
     });
   });
 

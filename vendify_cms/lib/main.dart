@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:vendify_cms/config/api_config.dart';
 import 'package:vendify_cms/config/theme.dart';
 import 'package:vendify_cms/screens/home_screen.dart';
 import 'package:vendify_cms/screens/products_screen.dart';
@@ -8,11 +9,22 @@ import 'package:vendify_cms/screens/posts_screen.dart';
 import 'package:vendify_cms/screens/post_detail_screen.dart';
 import 'package:vendify_cms/screens/page_screen.dart';
 import 'package:vendify_cms/screens/contact_screen.dart';
+import 'package:vendify_cms/services/api_service.dart';
 import 'package:vendify_cms/widgets/header.dart';
 import 'package:vendify_cms/widgets/footer.dart';
 
-void main() {
-  runApp(const VendifyCmsApp());
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // Resolve the tenant at runtime (slug -> GET /v1/cms/config). Falls back
+  // to build-time defaults when the API is unreachable (offline dev/preview).
+  try {
+    await CmsApiService().fetchConfig().timeout(const Duration(seconds: 5));
+  } catch (_) {
+    // Keep build-time fallbacks; the site still renders.
+  }
+
+  runApp(VendifyCmsApp());
 }
 
 final GoRouter _router = GoRouter(
@@ -60,7 +72,7 @@ class VendifyCmsApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp.router(
-      title: 'Saya Elegant Style',
+      title: ApiConfig.businessName ?? 'Vendify CMS',
       debugShowCheckedModeBanner: false,
       theme: CmsTheme.lightTheme,
       routerConfig: _router,

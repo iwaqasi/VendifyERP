@@ -21,10 +21,39 @@ class CmsApiService {
     }
   }
 
+  // ============ Runtime tenant config ============
+
+  /// Resolves the tenant at runtime and stores the server-confirmed values.
+  ///
+  /// Priority: build-time slug -> build-time fallback business id. Every
+  /// subsequent API call uses [ApiConfig.activeBusinessId], which is the
+  /// server-confirmed id once this succeeds.
+  Future<Map<String, dynamic>> fetchConfig() async {
+    final params = <String, dynamic>{};
+    if (ApiConfig.businessSlug.isNotEmpty) {
+      params['slug'] = ApiConfig.businessSlug;
+    } else {
+      params['business_id'] = ApiConfig.fallbackBusinessId;
+    }
+
+    final response = await _dio.get('/v1/cms/config', queryParameters: params);
+    final data = Map<String, dynamic>.from(response.data['data'] as Map);
+
+    ApiConfig.resolvedBusinessId = (data['business_id'] as num).toInt();
+    ApiConfig.businessName =
+        (data['business_name'] as String?)?.trim().isNotEmpty == true
+            ? data['business_name'] as String
+            : null;
+    ApiConfig.logoUrl = data['logo'] as String?;
+    ApiConfig.primaryColor = data['primary_color'] as String?;
+
+    return data;
+  }
+
   // ============ Home ============
   Future<Map<String, dynamic>> getHome() async {
     final response = await _dio.get('/v1/cms/home', queryParameters: {
-      'business_id': ApiConfig.businessId,
+      'business_id': ApiConfig.activeBusinessId,
     });
     return response.data['data'];
   }
@@ -32,7 +61,7 @@ class CmsApiService {
   // ============ Pages ============
   Future<Map<String, dynamic>> getPage(String slug) async {
     final response = await _dio.get('/v1/cms/pages/$slug', queryParameters: {
-      'business_id': ApiConfig.businessId,
+      'business_id': ApiConfig.activeBusinessId,
     });
     return response.data['data'];
   }
@@ -40,7 +69,7 @@ class CmsApiService {
   // ============ Posts ============
   Future<Map<String, dynamic>> getPosts({String? category, String? search, int page = 1}) async {
     final params = <String, dynamic>{
-      'business_id': ApiConfig.businessId,
+      'business_id': ApiConfig.activeBusinessId,
       'page': page,
     };
     if (category != null) params['category'] = category;
@@ -51,7 +80,7 @@ class CmsApiService {
 
   Future<Map<String, dynamic>> getPost(String slug) async {
     final response = await _dio.get('/v1/cms/posts/$slug', queryParameters: {
-      'business_id': ApiConfig.businessId,
+      'business_id': ApiConfig.activeBusinessId,
     });
     return response.data['data'];
   }
@@ -65,7 +94,7 @@ class CmsApiService {
     int perPage = 24,
   }) async {
     final params = <String, dynamic>{
-      'business_id': ApiConfig.businessId,
+      'business_id': ApiConfig.activeBusinessId,
       'page': page,
       'per_page': perPage,
     };
@@ -78,7 +107,7 @@ class CmsApiService {
 
   Future<Map<String, dynamic>> getProduct(String slug) async {
     final response = await _dio.get('/v1/cms/products/$slug', queryParameters: {
-      'business_id': ApiConfig.businessId,
+      'business_id': ApiConfig.activeBusinessId,
     });
     return response.data['data'];
   }
@@ -86,7 +115,7 @@ class CmsApiService {
   // ============ Categories ============
   Future<List<dynamic>> getCategories() async {
     final response = await _dio.get('/v1/cms/categories', queryParameters: {
-      'business_id': ApiConfig.businessId,
+      'business_id': ApiConfig.activeBusinessId,
     });
     return response.data['data']['categories'];
   }
@@ -98,7 +127,7 @@ class CmsApiService {
     required String message,
   }) async {
     final response = await _dio.post('/v1/cms/contact', data: {
-      'business_id': ApiConfig.businessId,
+      'business_id': ApiConfig.activeBusinessId,
       'name': name,
       'email': email,
       'message': message,

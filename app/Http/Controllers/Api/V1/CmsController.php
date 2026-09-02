@@ -14,10 +14,10 @@ class CmsController extends BaseApiController
      */
     public function home(Request $request): JsonResponse
     {
-        $business_id = $request->input('business_id');
+        $business_id = $this->resolveBusinessId($request);
 
         if (!$business_id) {
-            return $this->errorResponse('Business ID required', 400);
+            return $this->errorResponse('Business not found. Pass a valid business_id or slug.', 404);
         }
 
         // Get featured products
@@ -87,7 +87,7 @@ class CmsController extends BaseApiController
      */
     public function page(Request $request, string $slug): JsonResponse
     {
-        $business_id = $request->input('business_id');
+        $business_id = $this->resolveBusinessId($request);
 
         $page = DB::table('cms_pages')
             ->where('business_id', $business_id)
@@ -115,10 +115,10 @@ class CmsController extends BaseApiController
      */
     public function posts(Request $request): JsonResponse
     {
-        $business_id = $request->input('business_id');
+        $business_id = $this->resolveBusinessId($request);
         
         if (!$business_id) {
-            return $this->errorResponse('Business ID required', 400);
+            return $this->errorResponse('Business not found. Pass a valid business_id or slug.', 404);
         }
         
         $category = $request->input('category');
@@ -171,7 +171,7 @@ class CmsController extends BaseApiController
      */
     public function post(Request $request, string $slug): JsonResponse
     {
-        $business_id = $request->input('business_id');
+        $business_id = $this->resolveBusinessId($request);
 
         $post = DB::table('cms_posts')
             ->where('business_id', $business_id)
@@ -214,10 +214,10 @@ class CmsController extends BaseApiController
      */
     public function products(Request $request): JsonResponse
     {
-        $business_id = $request->input('business_id');
+        $business_id = $this->resolveBusinessId($request);
         
         if (!$business_id) {
-            return $this->errorResponse('Business ID required', 400);
+            return $this->errorResponse('Business not found. Pass a valid business_id or slug.', 404);
         }
         
         $category = $request->input('category_id');
@@ -312,7 +312,7 @@ class CmsController extends BaseApiController
      */
     public function product(Request $request, string $slug): JsonResponse
     {
-        $business_id = $request->input('business_id');
+        $business_id = $this->resolveBusinessId($request);
 
         $product = DB::table('products')
             ->where('business_id', $business_id)
@@ -366,7 +366,7 @@ class CmsController extends BaseApiController
      */
     public function categories(Request $request): JsonResponse
     {
-        $business_id = $request->input('business_id');
+        $business_id = $this->resolveBusinessId($request);
 
         $categories = DB::table('categories')
             ->where('business_id', $business_id)
@@ -401,10 +401,10 @@ class CmsController extends BaseApiController
             'phone' => 'nullable|string|max:50',
         ]);
 
-        $business_id = (int) $request->input('business_id');
+        $business_id = $this->resolveBusinessId($request);
 
         if (! $business_id) {
-            return $this->errorResponse('Business ID required', 400);
+            return $this->errorResponse('Business not found. Pass a valid business_id or slug.', 404);
         }
 
         $business = DB::table('business')->find($business_id);
@@ -421,7 +421,7 @@ class CmsController extends BaseApiController
                 ->join('subscriptions', 'subscriptions.business_id', '=', 'business.id')
                 ->join('packages', 'packages.id', '=', 'subscriptions.package_id')
                 ->where('business.id', $business_id)
-                ->where('subscriptions.status', 'active')
+                ->where('subscriptions.status', 'approved')
                 ->where('packages.flutter_cms', 1)
                 ->exists();
         } catch (\Exception $e) {
@@ -464,6 +464,53 @@ class CmsController extends BaseApiController
         ]);
 
         return $this->successResponse(['contact_id' => $contactId], 'Message sent successfully! We will get back to you soon.', 201);
+    }
+
+    /**
+     * Resolve the tenant for a public CMS request.
+     *
+     * Accepts `business_id` (validated to exist) or `slug`. Returns null
+     * when nothing resolves so callers can 404 instead of trusting raw
+     * client input.
+     */
+    private function resolveBusinessId(Request $request): ?int
+    {
+        $id = (int) $request->input('business_id');
+
+        if ($id > 0) {
+            return DB::table('business')->where('id', $id)->exists() ? $id : null;
+        }
+
+        $slug = trim((string) $request->input('slug', ''));
+
+        if ($slug !== '') {
+            $id = (int) DB::table('business')->where('slug', $slug)->value('id');
+
+            return $id > 0 ? $id : null;
+        }
+
+        return null;
+    }
+
+    /**
+     * Public runtime configuration for the Flutter CMS app.
+     * GET /api/v1/cms/config?slug=acme  (or ?business_id=3)
+     */
+    public function config(Request $request): JsonResponse
+    {
+        $business_id = $this->resolveBusinessId($request);
+
+        if (!$business_id) {
+            return $this->errorResponse('Business not found. Pass a valid business_id or slug.', 404);
+        }
+
+        $business = DB::table('business')->where('id', $business_id)->first();
+
+        return $this->successResponse(array_merge($this->getCmsSettings($business_id), [
+            'business_id' => $business_id,
+            'slug' => $business->slug ?? null,
+            'currency_id' => $business->currency_id ?? null,
+        ]));
     }
 
     /**
