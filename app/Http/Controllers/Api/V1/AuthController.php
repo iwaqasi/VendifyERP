@@ -78,7 +78,11 @@ class AuthController extends BaseApiController
         $deviceName = $request->input('device_name', 'pos-app');
         $user->tokens()->where('name', $deviceName)->delete();
 
+        // Wave 3: tokens expire. Previously personal access tokens never
+        // expired, so a lost device kept API access forever.
         $token = $user->createToken($deviceName);
+        $token->token->expires_at = now()->addDays((int) config('pos.token_access_days', 30));
+        $token->token->save();
 
         $business = \App\Business::find($user->business_id);
 
@@ -116,7 +120,7 @@ class AuthController extends BaseApiController
         return $this->successResponse([
             'access_token' => $token->accessToken,
             'token_type' => 'Bearer',
-            'expires_at' => null,
+            'expires_at' => optional($token->token->expires_at)->toIso8601String(),
             'user' => [
                 'id' => $user->id,
                 'name' => $user->user_full_name ?? trim($user->first_name . ' ' . $user->last_name),
@@ -139,8 +143,61 @@ class AuthController extends BaseApiController
      */
     public function logout(Request $request): JsonResponse
     {
-        $request->user()->token()->delete();
+        // revoke() keeps the row for the device list / audit trail while
+        // immediately invalidating the token (delete() erased the history).
+        $request->user()->token()->revoke();
+
         return $this->successResponse(null, 'Logged out successfully');
+    }
+
+    /**
+     * List the authenticated user's active device sessions.
+     * GET /api/v1/auth/devices
+     */
+    public function devices(Request $request): JsonResponse
+    {
+        $currentTokenId = $request->user()->token()->id ?? null;
+
+        $devices = $request->user()->tokens()
+            ->where('revoked', false)
+            ->orderByDesc('created_at')
+            ->get(['id', 'name', 'last_used_at', 'created_at', 'expires_at'])
+            ->map(function ($token) use ($currentTokenId) {
+                return [
+                    'id' => $token->id,
+                    'name' => $token->name,
+                    'last_used_at' => optional($token->last_used_at)->toIso8601String(),
+                    'expires_at' => optional($token->expires_at)->toIso8601String(),
+                    'created_at' => optional($token->created_at)->toIso8601String(),
+                    'is_current' => $token->id === $currentTokenId,
+                ];
+            })
+            ->values();
+
+        return $this->successResponse($devices);
+    }
+
+    /**
+     * Revoke a specific device session (remote logout of a lost device).
+     * DELETE /api/v1/auth/devices/{id}
+     */
+    public function revokeDevice(Request $request, string $id): JsonResponse
+    {
+        $currentTokenId = $request->user()->token()->id ?? null;
+
+        if ($id === $currentTokenId) {
+            return $this->errorResponse('This is the current session. Use logout instead.', 422);
+        }
+
+        $token = $request->user()->tokens()->where('id', $id)->first();
+
+        if (!$token) {
+            return $this->errorResponse('Device session not found.', 404);
+        }
+
+        $token->revoke();
+
+        return $this->successResponse(null, 'Device session revoked');
     }
 
     /**
@@ -152,10 +209,13 @@ class AuthController extends BaseApiController
         $deviceName = $request->input('device_name', 'pos-app');
         $newToken = $request->user()->createToken($deviceName);
 
+        $newToken->token->expires_at = now()->addDays((int) config('pos.token_access_days', 30));
+        $newToken->token->save();
+
         return $this->successResponse([
             'access_token' => $newToken->accessToken,
             'token_type' => 'Bearer',
-            'expires_at' => null,
+            'expires_at' => optional($newToken->token->expires_at)->toIso8601String(),
         ], 'Token refreshed successfully');
     }
 
