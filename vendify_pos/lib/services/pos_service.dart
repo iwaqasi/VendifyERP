@@ -240,6 +240,10 @@ class PosService {
     final timestamp = DateTime.now().millisecondsSinceEpoch;
     final invoiceNo = '$receiptPrefix$timestamp';
 
+    // Stable local id so online retries AND offline queue entries for the
+    // same sale map to one server transaction (idempotent sync).
+    final localTxId = 'POS_${DateTime.now().millisecondsSinceEpoch}_$userId';
+
     try {
       final response = await _api.post('/v1/sells', data: {
         'location_id': locationId,
@@ -251,6 +255,7 @@ class PosService {
         'discount_type': 'fixed',
         'discount_amount': discount,
         'invoice_no': invoiceNo,
+        'local_transaction_id': localTxId,
         'rp_redeemed': rpRedeemed,
         'rp_redeemed_amount': rpRedeemAmount,
       });
@@ -260,7 +265,9 @@ class PosService {
       // Offline fallback: store transaction in business-specific sync queue
       final storage = await _getStorage();
       if (storage != null) {
-        final localId = 'OFFLINE_${DateTime.now().millisecondsSinceEpoch}';
+        // Reuse the SAME local id as the online attempt so a late server
+        // commit can't produce a duplicate on sync.
+        final localId = localTxId;
         final offlineTx = OfflineTransaction(
           localId: localId,
           businessId: businessId,

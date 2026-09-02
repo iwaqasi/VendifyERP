@@ -40,6 +40,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
   Widget build(BuildContext context) {
     if (_isLoading) return const Center(child: CircularProgressIndicator(color: CmsTheme.highlight));
     if (_post == null) return const Center(child: Text('Post not found'));
+    final published = _post!['published_at']?.toString() ?? '';
 
     return SingleChildScrollView(
       child: Padding(
@@ -54,7 +55,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
             Row(children: [
               Text(_post!['author_name'] ?? 'Admin', style: const TextStyle(fontSize: 13, color: CmsTheme.textMuted)),
               const SizedBox(width: 16),
-              Text(_post!['published_at']?.toString().substring(0, 10) ?? '', style: const TextStyle(fontSize: 13, color: CmsTheme.textMuted)),
+              Text(published.length >= 10 ? published.substring(0, 10) : published, style: const TextStyle(fontSize: 13, color: CmsTheme.textMuted)),
               const SizedBox(width: 16),
               Text('${_post!['views_count'] ?? 0} views', style: const TextStyle(fontSize: 13, color: CmsTheme.textMuted)),
             ]),

@@ -4,7 +4,9 @@ import 'package:vendify_cms/config/api_config.dart';
 class CmsApiService {
   late final Dio _dio;
 
-  CmsApiService() {
+  /// [adapter] allows tests to inject an in-memory HttpClientAdapter so
+  /// widget tests never perform real network I/O.
+  CmsApiService({HttpClientAdapter? adapter}) {
     _dio = Dio(BaseOptions(
       baseUrl: ApiConfig.baseUrl,
       connectTimeout: const Duration(seconds: 15),
@@ -14,6 +16,9 @@ class CmsApiService {
         'Content-Type': 'application/json',
       },
     ));
+    if (adapter != null) {
+      _dio.httpClientAdapter = adapter;
+    }
   }
 
   // ============ Home ============

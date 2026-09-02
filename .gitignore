@@ -34,6 +34,9 @@ npm-debug.log
 *.swp
 .DS_Store
 
+# Compiled Flutter POS web build served from public/ (pipeline artifact)
+/public/vendify-pos/
+
 # IDE
 *.iml
 .idea/
@@ -62,3 +65,6 @@ vendify_pos/.idea/
 vendify_pos/*.iml
 vendify_cms/.idea/
 vendify_cms/*.iml
+# PHPUnit result cache
+.phpunit.result.cache
+/.phpunit.cache/

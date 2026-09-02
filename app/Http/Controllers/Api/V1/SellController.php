@@ -138,12 +138,8 @@ class SellController extends BaseApiController
         $business_id = $this->getBusinessId($request);
         $user_id = $request->user()->id;
 
-        \Log::info('POS Sell Store - Received data:', [
-            'business_id' => $business_id,
-            'user_id' => $user_id,
-            'all_input' => $request->all(),
-            'json_input' => $request->input(),
-        ]);
+        // NOTE: No request-body logging here. Sale payloads contain PII
+        // (customers, orders, payments) and must never land in logs.
 
         $request->validate([
             'location_id' => 'required|integer',
@@ -151,64 +147,225 @@ class SellController extends BaseApiController
             'products.*.product_id' => 'required|integer',
             'products.*.variation_id' => 'required|integer',
             'products.*.quantity' => 'required|numeric|min:0.01',
-            'products.*.unit_price' => 'required|numeric|min:0',
+            'products.*.unit_price' => 'nullable|numeric|min:0',
             'products.*.discount' => 'nullable|numeric|min:0',
             'products.*.tax_id' => 'nullable|integer',
             'products.*.service_staff_id' => 'nullable|integer',
             'payments' => 'required|array|min:1',
-            'payments.*.amount' => 'required|numeric|min:0',
+            'payments.*.amount' => 'required|numeric|min:0.01',
             'payments.*.method' => 'required|string',
             'contact_id' => 'nullable|integer',
             'discount_type' => 'nullable|in:fixed,percentage',
             'discount_amount' => 'nullable|numeric|min:0',
             'shipping_charges' => 'nullable|numeric|min:0',
+            'types_of_service_id' => 'nullable|integer',
+            'table_id' => 'nullable|integer',
+            'local_transaction_id' => 'nullable|string|max:64',
         ]);
 
         DB::beginTransaction();
 
         try {
-            // Validate stock availability
-            foreach ($request->products as $line) {
-                $variation = Variation::find($line['variation_id']);
-                $product = Product::find($line['product_id']);
+            // ============ IDEMPOTENCY: retried offline sales must not create duplicates ============
+            if ($local_transaction_id = $request->input('local_transaction_id')) {
+                $existing = Transaction::where('business_id', $business_id)
+                    ->where('type', 'sell')
+                    ->where('local_transaction_id', $local_transaction_id)
+                    ->first();
 
-                if (!$variation || !$product) {
+                if ($existing) {
                     DB::rollBack();
-                    return $this->errorResponse("Product or variation not found for ID: {$line['product_id']}", 422);
+                    $existing->load(['contact', 'location', 'sell_lines.product', 'payment_lines']);
+
+                    return $this->successResponse($existing, 'Sale already synced (idempotent response)');
+                }
+            }
+
+            // ============ TENANT OWNERSHIP VALIDATION (fail-closed, IDOR protection) ============
+            $locationExists = BusinessLocation::where('business_id', $business_id)
+                ->where('id', $request->location_id)
+                ->exists();
+
+            if (! $locationExists) {
+                DB::rollBack();
+
+                return $this->errorResponse('Location not found for this business.', 422);
+            }
+
+            $contact = null;
+            if (! empty($request->contact_id)) {
+                $contact = Contact::where('business_id', $business_id)
+                    ->where('id', $request->contact_id)
+                    ->first();
+
+                if (! $contact) {
+                    DB::rollBack();
+
+                    return $this->errorResponse('Customer not found for this business.', 422);
+                }
+            }
+
+            if (! empty($request->types_of_service_id)) {
+                $tosExists = \App\TypesOfService::where('business_id', $business_id)
+                    ->where('id', $request->types_of_service_id)
+                    ->exists();
+
+                if (! $tosExists) {
+                    DB::rollBack();
+
+                    return $this->errorResponse('Type of service not found for this business.', 422);
+                }
+            }
+
+            if (! empty($request->table_id) && class_exists(\App\Restaurant\ResTable::class)) {
+                $tableExists = \App\Restaurant\ResTable::where('business_id', $business_id)
+                    ->where('id', $request->table_id)
+                    ->exists();
+
+                if (! $tableExists) {
+                    DB::rollBack();
+
+                    return $this->errorResponse('Table not found for this business.', 422);
+                }
+            }
+
+            $canEditPrice = $request->user()->can('edit_product_price');
+
+            // ============ RESOLVE PRODUCTS SERVER-SIDE ============
+            // Every referenced entity is scoped to this business and unit
+            // prices are re-derived from the catalogue unless the user has
+            // explicit permission to edit prices.
+            $resolvedLines = [];
+            $priceOverrides = [];
+
+            foreach ($request->products as $line) {
+                $product = Product::where('business_id', $business_id)->find($line['product_id']);
+
+                if (! $product) {
+                    DB::rollBack();
+
+                    return $this->errorResponse("Product not found for this business: {$line['product_id']}", 422);
                 }
 
+                $variation = Variation::where('product_id', $line['product_id'])
+                    ->find($line['variation_id']);
+
+                if (! $variation) {
+                    DB::rollBack();
+
+                    return $this->errorResponse("Variation not found for product: {$line['product_id']}", 422);
+                }
+
+                // Authoritative price: the catalogue already exposes the
+                // tax-inclusive price (sell_price_inc_tax) to the POS UI.
+                $serverUnitPrice = $variation->sell_price_inc_tax ?? $variation->default_sell_price;
+
+                if ($serverUnitPrice === null) {
+                    DB::rollBack();
+
+                    return $this->errorResponse("No selling price configured for product: {$product->name}", 422);
+                }
+
+                $serverUnitPrice = (float) $serverUnitPrice;
+                $clientUnitPrice = isset($line['unit_price']) ? (float) $line['unit_price'] : null;
+                $unitPrice = $serverUnitPrice;
+                $priceOverridden = false;
+
+                if ($canEditPrice && $clientUnitPrice !== null) {
+                    $unitPrice = $clientUnitPrice;
+                } elseif ($clientUnitPrice !== null && abs($clientUnitPrice - $serverUnitPrice) > 0.001) {
+                    // Client value differs from the catalogue and the user has
+                    // no price-edit permission â€” fall back to the server price.
+                    $unitPrice = $serverUnitPrice;
+                    $priceOverridden = true;
+                    $priceOverrides[] = $product->id;
+                }
+
+                // Tax resolution (scoped to the business)
+                $taxRate = 0;
+                $taxId = null;
+                if (! empty($line['tax_id'])) {
+                    $tax = \App\TaxRate::where('business_id', $business_id)
+                        ->where('id', $line['tax_id'])
+                        ->first();
+
+                    if ($tax) {
+                        $taxRate = (float) $tax->amount;
+                        $taxId = $tax->id;
+                    }
+                }
+
+                // Service staff (scoped to the business)
+                $serviceStaffId = null;
+                if (! empty($line['service_staff_id'])) {
+                    $staffExists = \App\User::where('business_id', $business_id)
+                        ->where('id', $line['service_staff_id'])
+                        ->exists();
+
+                    if (! $staffExists) {
+                        DB::rollBack();
+
+                        return $this->errorResponse('Service staff not found for this business.', 422);
+                    }
+                    $serviceStaffId = (int) $line['service_staff_id'];
+                }
+
+                // Stock availability (only for stock-managed products)
                 if ($product->enable_stock) {
-                    $stock = $this->getVariationStock($line['variation_id'], $request->location_id);
+                    $stock = $this->getVariationStock($variation->id, $request->location_id);
                     if ($stock < $line['quantity']) {
                         DB::rollBack();
+
                         return $this->errorResponse(
                             "Insufficient stock for {$product->name}. Available: {$stock}, Requested: {$line['quantity']}",
                             422
                         );
                     }
                 }
+
+                $resolvedLines[] = [
+                    'product' => $product,
+                    'variation' => $variation,
+                    'quantity' => (float) $line['quantity'],
+                    'unit_price' => $unitPrice,
+                    'discount' => (float) ($line['discount'] ?? 0),
+                    'tax_rate' => $taxRate,
+                    'tax_id' => $taxId,
+                    'service_staff_id' => $serviceStaffId,
+                    'price_overridden' => $priceOverridden,
+                ];
             }
 
-            // Calculate totals
+            // ============ CALCULATE TOTALS SERVER-SIDE ============
+            // Tax handling follows the product's tax_type:
+            //   - exclusive: line price excludes tax -> tax is ADDED on top
+            //   - inclusive: line price already contains tax -> tax is EXTRACTED
             $total_before_tax = 0;
             $total_tax = 0;
 
-            foreach ($request->products as $line) {
-                $line_total = $line['quantity'] * $line['unit_price'];
-                $line_discount = $line['discount'] ?? 0;
-                $line_total -= $line_discount;
+            foreach ($resolvedLines as $index => $line) {
+                $line_total = ($line['quantity'] * $line['unit_price']) - $line['discount'];
+                $rate = (float) $line['tax_rate'];
+                $isInclusive = (($line['product']->tax_type ?? 'exclusive') === 'inclusive') && $rate > 0;
 
-                // Calculate tax
-                $tax_rate = 0;
-                if (!empty($line['tax_id'])) {
-                    $tax = \App\TaxRate::find($line['tax_id']);
-                    if ($tax) {
-                        $tax_rate = $tax->rate;
-                    }
+                if ($isInclusive) {
+                    $line_base = $line_total / (1 + $rate / 100);
+                    $line_tax = $line_total - $line_base;
+                    $unitPriceExc = $line['unit_price'] / (1 + $rate / 100);
+                } else {
+                    $line_base = $line_total;
+                    $line_tax = $line_total * ($rate / 100);
+                    $unitPriceExc = $line['unit_price'];
                 }
-                $line_tax = $line_total * ($tax_rate / 100);
+
+                $unitPriceInc = $unitPriceExc + ($unitPriceExc * $rate / 100);
+
                 $total_tax += $line_tax;
-                $total_before_tax += ($line_total - $line_tax);
+                $total_before_tax += $line_base;
+
+                $resolvedLines[$index]['unit_price_exc'] = $unitPriceExc;
+                $resolvedLines[$index]['unit_price_inc'] = $unitPriceInc;
+                $resolvedLines[$index]['line_tax'] = $line_tax;
             }
 
             $discount = $request->discount_amount ?? 0;
@@ -217,7 +374,7 @@ class SellController extends BaseApiController
             }
 
             $shipping = $request->shipping_charges ?? 0;
-            $final_total = $total_before_tax + $total_tax - $discount + $shipping;
+            $final_total = round($total_before_tax + $total_tax - $discount + $shipping, 4);
 
             // Calculate total payments
             $total_paid = collect($request->payments)->sum('amount');
@@ -232,11 +389,9 @@ class SellController extends BaseApiController
                 $payment_status = 'due';
             }
 
-            // Use POS-provided invoice number if available, otherwise generate one
-            $invoice_no = $request->input('invoice_no');
-            if (empty($invoice_no)) {
-                $invoice_no = $this->transactionUtil->getInvoiceNumber($business_id, 'sell', $request->location_id);
-            }
+            // Server-generated invoice number (never trust client-supplied numbers,
+            // and the scheme must receive the real status: 'final', not 'sell').
+            $invoice_no = $this->transactionUtil->getInvoiceNumber($business_id, 'final', $request->location_id);
 
             // Create transaction
             // Note: column names must match the actual DB schema:
@@ -247,8 +402,9 @@ class SellController extends BaseApiController
             $transaction = Transaction::create([
                 'business_id' => $business_id,
                 'location_id' => $request->location_id,
+                'local_transaction_id' => $request->input('local_transaction_id'),
                 'type' => 'sell',
-                'sub_type' => $request->input('sub_type', 'sales_order'),
+                'sub_type' => $request->input('sub_type'),
                 'status' => 'final',
                 'contact_id' => $request->contact_id,
                 'invoice_no' => $invoice_no,
@@ -272,41 +428,38 @@ class SellController extends BaseApiController
                 'rp_redeemed_amount' => !empty($request->rp_redeemed_amount) ? $request->rp_redeemed_amount : 0,
             ]);
 
-            // Create sell lines
-            foreach ($request->products as $line) {
-                $product = Product::find($line['product_id']);
-                $line_total = $line['quantity'] * $line['unit_price'];
-                $line_discount = $line['discount'] ?? 0;
-
-                $tax_rate = 0;
-                $tax_id = null;
-                if (!empty($line['tax_id'])) {
-                    $tax = \App\TaxRate::find($line['tax_id']);
-                    if ($tax) {
-                        $tax_rate = $tax->rate;
-                        $tax_id = $tax->id;
-                    }
-                }
-                $item_tax = ($line_total - $line_discount) * ($tax_rate / 100);
-
+            // Create sell lines (using the server-resolved, tax-correct prices)
+            foreach ($resolvedLines as $line) {
                 TransactionSellLine::create([
                     'transaction_id' => $transaction->id,
-                    'product_id' => $line['product_id'],
-                    'variation_id' => $line['variation_id'],
+                    'product_id' => $line['product']->id,
+                    'variation_id' => $line['variation']->id,
                     'quantity' => $line['quantity'],
-                    'unit_price_before_discount' => $line['unit_price'],
-                    'unit_price' => $line['unit_price'],
-                    'unit_price_inc_tax' => $line['unit_price'] + ($line['unit_price'] * $tax_rate / 100),
-                    'line_discount_amount' => $line_discount,
+                    'unit_price_before_discount' => $line['unit_price_exc'],
+                    'unit_price' => $line['unit_price_exc'],
+                    'unit_price_inc_tax' => $line['unit_price_inc'],
+                    'line_discount_amount' => $line['discount'],
                     'line_discount_type' => 'fixed',
-                    'item_tax' => $item_tax,
-                    'tax_id' => $tax_id,
-                    'res_service_staff_id' => $line['service_staff_id'] ?? null,
+                    'item_tax' => $line['line_tax'],
+                    'tax_id' => $line['tax_id'],
+                    'res_service_staff_id' => $line['service_staff_id'],
                 ]);
 
                 // Update stock if applicable
-                if ($product->enable_stock) {
-                    $this->updateStock($line['variation_id'], $request->location_id, $line['quantity'], 'decrease');
+                if ($line['product']->enable_stock) {
+                    $this->updateStock($line['variation']->id, $request->location_id, $line['quantity'], 'decrease');
+                }
+            }
+
+            // Resolve payment accounts from the location's
+            // default_payment_accounts map ({method: account_id}) so the
+            // Accounting module can reconcile POS payments.
+            $paymentAccountMap = [];
+            $saleLocation = BusinessLocation::find($request->location_id);
+            if ($saleLocation && ! empty($saleLocation->default_payment_accounts)) {
+                $decoded = json_decode($saleLocation->default_payment_accounts, true);
+                if (is_array($decoded)) {
+                    $paymentAccountMap = $decoded;
                 }
             }
 
@@ -318,6 +471,7 @@ class SellController extends BaseApiController
                     'amount' => $payment['amount'],
                     'method' => $payment['method'],
                     'payment_ref_no' => $payment['reference'] ?? null,
+                    'account_id' => $paymentAccountMap[$payment['method']] ?? null,
                     'created_by' => $user_id,
                     'paid_on' => now(),
                 ]);
@@ -351,12 +505,27 @@ class SellController extends BaseApiController
             $transaction = Transaction::with(['contact', 'location', 'sell_lines.product', 'payment_lines'])
                 ->find($transaction->id);
 
-            return $this->successResponse($transaction, 'Sale created successfully', 201);
+            $responseExtra = ['invoice_number' => $transaction->invoice_no];
+
+            if (! empty($priceOverrides)) {
+                // Transparency: the client submitted unit prices that were not
+                // honoured (no price-edit permission). Client should refresh.
+                $responseExtra['price_overridden_product_ids'] = array_values(array_unique($priceOverrides));
+            }
+
+            $response = array_merge($transaction->toArray(), $responseExtra);
+
+            return $this->successResponse($response, 'Sale created successfully', 201);
 
         } catch (\Exception $e) {
             DB::rollBack();
-            \Log::emergency('POS Sale Error: ' . $e->getMessage());
-            return $this->errorResponse('Failed to create sale: ' . $e->getMessage(), 500);
+
+            \Log::error('POS Sale creation failed: business=' . $business_id
+                . ' user=' . ($user_id ?? 'n/a')
+                . ' | ' . $e->getMessage());
+
+            // Never leak internal exception details to the API consumer.
+            return $this->errorResponse('Failed to create sale. Please try again.', 500);
         }
     }
 

@@ -1,0 +1,91 @@
+# VendifyERP CI — Laravel backend + Flutter POS + Flutter CMS
+# Backend tests run against a real MySQL 8 service so the full 300+ migration
+# set and MySQL-specific behaviour are exercised (mirrors phpunit.xml).
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  laravel-tests:
+    name: Laravel API tests (PHP 8.2 / MySQL 8)
+    runs-on: ubuntu-latest
+
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_DATABASE: ultimatepos_test
+          MYSQL_ROOT_PASSWORD: root
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: mbstring, xml, ctype, iconv, intl, pdo_mysql, dom, filter, gd, json, bcmath, zip
+          coverage: none
+
+      - name: Install composer dependencies
+        run: composer install --prefer-dist --no-interaction --no-progress
+
+      - name: Prepare environment
+        run: |
+          cp .env.example .env
+          php artisan key:generate
+
+      - name: Run test suite (migrates a fresh DB, then runs feature tests)
+        env:
+          DB_CONNECTION: mysql
+          DB_HOST: 127.0.0.1
+          DB_PORT: '3306'
+          DB_DATABASE: ultimatepos_test
+          DB_USERNAME: root
+          DB_PASSWORD: root
+          POS_LICENSE_DEV_BYPASS: 'false'
+        run: php artisan test
+
+  flutter-pos:
+    name: Flutter POS (analyze + test)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: vendify_pos
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      # Errors are fatal. Warnings are currently tolerated (7 pre-existing);
+      # tighten to --no-fatal-warnings once the backlog is cleared.
+      - run: flutter analyze --no-fatal-infos --no-fatal-warnings
+      - run: flutter test
+
+  flutter-cms:
+    name: Flutter CMS (analyze + test)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: vendify_cms
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter analyze --no-fatal-infos --no-fatal-warnings
+      - run: flutter test

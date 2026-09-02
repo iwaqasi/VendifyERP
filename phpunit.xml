@@ -21,11 +21,16 @@
         <env name="APP_ENV" value="testing"/>
         <env name="BCRYPT_ROUNDS" value="4"/>
         <env name="CACHE_DRIVER" value="array"/>
-        <!-- <env name="DB_CONNECTION" value="sqlite"/> -->
-        <!-- <env name="DB_DATABASE" value=":memory:"/> -->
+        <!-- Isolated MySQL test database — mirrors production engine, never the dev DB. -->
+        <!-- Credentials come from .env (local) or .env.testing (CI) — never hardcoded here. -->
+        <env name="DB_CONNECTION" value="mysql"/>
+        <env name="DB_DATABASE" value="ultimatepos_test"/>
         <env name="MAIL_MAILER" value="array"/>
         <env name="QUEUE_CONNECTION" value="sync"/>
         <env name="SESSION_DRIVER" value="array"/>
         <env name="TELESCOPE_ENABLED" value="false"/>
+        <!-- Keep Passport from requiring generated keys in tests (we use actingAs). -->
+        <env name="PASSPORT_PERSONAL_ACCESS_CLIENT_ID" value="1"/>
+        <env name="PASSPORT_PERSONAL_ACCESS_CLIENT_SECRET" value="test-secret"/>
     </php>
 </phpunit>

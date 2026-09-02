@@ -61,7 +61,7 @@ class _PostsScreenState extends State<PostsScreen> {
                     itemBuilder: (context, index) {
                       final post = _posts[index];
                       return GestureDetector(
-                        onTap: () => context.go('/blog/${post.slug}'),
+                        onTap: () => context.go('/blog/${post['slug']}'),
                         child: Container(
                           decoration: BoxDecoration(border: Border.all(color: CmsTheme.border), borderRadius: BorderRadius.circular(8)),
                           child: Column(
@@ -73,9 +73,9 @@ class _PostsScreenState extends State<PostsScreen> {
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Text(post.title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold), maxLines: 2, overflow: TextOverflow.ellipsis),
+                                    Text(post['title'] ?? '', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold), maxLines: 2, overflow: TextOverflow.ellipsis),
                                     const SizedBox(height: 8),
-                                    Text(post.excerpt ?? '', style: const TextStyle(fontSize: 12, color: CmsTheme.textSecondary), maxLines: 2, overflow: TextOverflow.ellipsis),
+                                    Text(post['excerpt'] ?? '', style: const TextStyle(fontSize: 12, color: CmsTheme.textSecondary), maxLines: 2, overflow: TextOverflow.ellipsis),
                                   ],
                                 ),
                               ),

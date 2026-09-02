@@ -28,7 +28,8 @@ class ProductController extends BaseApiController
     {
         $business_id = $this->getBusinessId($request);
         $location_id = $request->input('location_id') ?? $this->getDefaultLocationId($business_id);
-        $per_page = $request->input('per_page', 20);
+        // Hard cap: a busy POS terminal must never be able to request 100k rows.
+        $per_page = min(max((int) $request->input('per_page', 20), 1), 100);
 
         $query = Product::where('business_id', $business_id)
             ->where('is_inactive', 0)
@@ -68,35 +69,18 @@ class ProductController extends BaseApiController
         // Only products for sale (not_for_selling = 0)
         $query->where('not_for_selling', 0);
 
-        $products = $query->orderBy('name', 'asc')->get();
+        // DB-level pagination: only one page ever leaves the database.
+        // (Previously: ->get() loaded the ENTIRE catalogue, then sliced —
+        // which collapsed under tens of thousands of SKUs.)
+        $products = $query->orderBy('name', 'asc')->paginate($per_page);
 
-        // Transform each product for API response
-        $transformed = $products->map(function ($product) use ($location_id) {
-            return $this->transformProduct($product, $location_id);
-        })->values();
+        // Transform the page's rows only, keeping the paginator's meta intact.
+        $items = collect($products->items())
+            ->map(fn ($product) => $this->transformProduct($product, $location_id))
+            ->values();
+        $products->setCollection($items);
 
-        // Manual pagination
-        $page = (int) $request->input('page', 1);
-        $perPage = (int) $per_page;
-        $total = $transformed->count();
-        $items = $transformed->slice(($page - 1) * $perPage, $perPage)->values();
-        $lastPage = (int) ceil($total / $perPage);
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Success',
-            'data' => $items,
-            'meta' => [
-                'current_page' => $page,
-                'last_page' => $lastPage,
-                'per_page' => $perPage,
-                'total' => $total,
-            ],
-            'links' => [
-                'next' => $page < $lastPage ? url('/api/v1/products?page=' . ($page + 1)) : null,
-                'prev' => $page > 1 ? url('/api/v1/products?page=' . ($page - 1)) : null,
-            ],
-        ]);
+        return $this->paginatedResponse($products);
     }
 
     /**
@@ -443,3 +427,4 @@ class ProductController extends BaseApiController
 
         return $stocks;
     }
+}

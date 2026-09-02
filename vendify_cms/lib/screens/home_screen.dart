@@ -4,14 +4,16 @@ import 'package:vendify_cms/config/theme.dart';
 import 'package:vendify_cms/services/api_service.dart';
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+  final CmsApiService? apiService;
+
+  const HomeScreen({super.key, this.apiService});
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  final CmsApiService _api = CmsApiService();
+  late final CmsApiService _api;
   List<dynamic> _featuredProducts = [];
   List<dynamic> _categories = [];
   List<dynamic> _latestPosts = [];
@@ -20,6 +22,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    _api = widget.apiService ?? CmsApiService();
     _loadHome();
   }
 
@@ -150,7 +153,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildCategoryCard(dynamic category) {
     return GestureDetector(
-      onTap: () => context.go('/products?category=${category.id}'),
+      onTap: () => context.go('/products?category=${category['id']}'),
       child: Container(
         width: 200,
         padding: const EdgeInsets.all(24),
@@ -164,12 +167,12 @@ class _HomeScreenState extends State<HomeScreen> {
             const Icon(Icons.category, size: 40, color: CmsTheme.highlight),
             const SizedBox(height: 12),
             Text(
-              category.name,
+              category['name'] ?? '',
               style: const TextStyle(fontWeight: FontWeight.bold, color: CmsTheme.textPrimary),
             ),
             const SizedBox(height: 4),
             Text(
-              '${category.product_count} products',
+              '${category['product_count'] ?? 0} products',
               style: const TextStyle(fontSize: 12, color: CmsTheme.textMuted),
             ),
           ],
@@ -223,7 +226,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildProductCard(dynamic product) {
     return GestureDetector(
-      onTap: () => context.go('/products/${product.slug}'),
+      onTap: () => context.go('/products/${product['slug']}'),
       child: Container(
         decoration: BoxDecoration(
           color: Colors.white,
@@ -241,8 +244,8 @@ class _HomeScreenState extends State<HomeScreen> {
                   color: CmsTheme.surface,
                   borderRadius: const BorderRadius.vertical(top: Radius.circular(8)),
                 ),
-                child: product.image_url != null
-                    ? Image.network(product.image_url, fit: BoxFit.cover)
+                child: product['image_url'] != null
+                    ? Image.network(product['image_url'], fit: BoxFit.cover)
                     : const Icon(Icons.image, size: 48, color: CmsTheme.textMuted),
               ),
             ),
@@ -253,14 +256,14 @@ class _HomeScreenState extends State<HomeScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    product.name,
+                    product['name'] ?? '',
                     style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: CmsTheme.textPrimary),
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'KD ${double.tryParse(product.sell_price_inc_tax?.toString() ?? '0')?.toStringAsFixed(3) ?? '0.000'}',
+                    'KD ${double.tryParse(product['sell_price_inc_tax']?.toString() ?? '0')?.toStringAsFixed(3) ?? '0.000'}',
                     style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: CmsTheme.highlight),
                   ),
                 ],
@@ -303,8 +306,9 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildPostCard(dynamic post) {
+    final published = post['published_at']?.toString() ?? '';
     return GestureDetector(
-      onTap: () => context.go('/blog/${post.slug}'),
+      onTap: () => context.go('/blog/${post['slug']}'),
       child: Container(
         decoration: BoxDecoration(
           color: Colors.white,
@@ -321,8 +325,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 color: CmsTheme.surface,
                 borderRadius: BorderRadius.vertical(top: Radius.circular(8)),
               ),
-              child: post.image_url != null
-                  ? Image.network(post.image_url, fit: BoxFit.cover)
+              child: post['image_url'] != null
+                  ? Image.network(post['image_url'], fit: BoxFit.cover)
                   : const Icon(Icons.article, size: 48, color: CmsTheme.textMuted),
             ),
             Padding(
@@ -331,21 +335,21 @@ class _HomeScreenState extends State<HomeScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    post.title,
+                    post['title'] ?? '',
                     style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: CmsTheme.textPrimary),
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    post.excerpt ?? '',
+                    post['excerpt'] ?? '',
                     style: const TextStyle(fontSize: 13, color: CmsTheme.textSecondary),
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                   ),
                   const SizedBox(height: 12),
                   Text(
-                    post.published_at?.toString().substring(0, 10) ?? '',
+                    published.length >= 10 ? published.substring(0, 10) : published,
                     style: const TextStyle(fontSize: 12, color: CmsTheme.textMuted),
                   ),
                 ],

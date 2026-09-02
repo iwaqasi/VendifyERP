@@ -114,7 +114,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
         const Text('CATEGORIES', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: CmsTheme.textPrimary)),
         const SizedBox(height: 12),
         _buildFilterItem('All Products', null),
-        ..._categories.map((cat) => _buildFilterItem(cat.name, cat.id)),
+        ..._categories.map((cat) => _buildFilterItem(cat['name'] ?? '', cat['id'])),
         const SizedBox(height: 24),
 
         // Sort
@@ -238,7 +238,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
 
   Widget _buildProductCard(dynamic product) {
     return GestureDetector(
-      onTap: () => context.go('/products/${product.slug}'),
+      onTap: () => context.go('/products/${product['slug']}'),
       child: Container(
         decoration: BoxDecoration(
           color: Colors.white,
@@ -255,10 +255,10 @@ class _ProductsScreenState extends State<ProductsScreen> {
                   color: CmsTheme.surface,
                   borderRadius: const BorderRadius.vertical(top: Radius.circular(8)),
                 ),
-                child: product.image_url != null
+                child: product['image_url'] != null
                     ? ClipRRect(
                         borderRadius: const BorderRadius.vertical(top: Radius.circular(8)),
-                        child: Image.network(product.image_url, fit: BoxFit.cover),
+                        child: Image.network(product['image_url'], fit: BoxFit.cover),
                       )
                     : const Icon(Icons.image, size: 48, color: CmsTheme.textMuted),
               ),
@@ -268,18 +268,18 @@ class _ProductsScreenState extends State<ProductsScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  if (product.category_name != null)
-                    Text(product.category_name, style: const TextStyle(fontSize: 11, color: CmsTheme.highlight)),
+                  if (product['category_name'] != null)
+                    Text(product['category_name'], style: const TextStyle(fontSize: 11, color: CmsTheme.highlight)),
                   const SizedBox(height: 4),
                   Text(
-                    product.name,
+                    product['name'] ?? '',
                     style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: CmsTheme.textPrimary),
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'KD ${double.tryParse(product.sell_price_inc_tax?.toString() ?? '0')?.toStringAsFixed(3) ?? '0.000'}',
+                    'KD ${double.tryParse(product['sell_price_inc_tax']?.toString() ?? '0')?.toStringAsFixed(3) ?? '0.000'}',
                     style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: CmsTheme.highlight),
                   ),
                 ],

@@ -1218,7 +1218,9 @@ class Util
             //ip pass from proxy
             $ip = $_SERVER['HTTP_X_FORWARDED_FOR'];
         } else {
-            $ip = $_SERVER['REMOTE_ADDR'];
+            // REMOTE_ADDR is not set in CLI/test contexts (scheduled jobs,
+            // feature tests); fall back to a placeholder instead of erroring.
+            $ip = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
         }
 
         return $ip;

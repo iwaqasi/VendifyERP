@@ -45,44 +45,8 @@ Route::middleware('auth:api')->group(function () {
     Route::get('/v1/auth/me', [\App\Http\Controllers\Api\V1\AuthController::class, 'user']);
     Route::post('/v1/auth/switch-business', [\App\Http\Controllers\Api\V1\AuthController::class, 'switchBusiness']);
 
-    // --- License Check Endpoint ---
-    Route::get('/v1/license/check', function (Request $request) {
-        $user = $request->user();
-        $business_id = $user->business_id;
-
-        try {
-            $subscription = \Modules\Superadmin\Entities\Subscription::active_subscription($business_id);
-
-            if (!$subscription || !$subscription->package) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'No active subscription',
-                    'has_pos_license' => false,
-                    'error_code' => 'NO_SUBSCRIPTION',
-                ]);
-            }
-
-            $package = $subscription->package;
-
-            return response()->json([
-                'success' => true,
-                'has_pos_license' => (bool) $package->flutter_pos,
-                'has_cms_license' => (bool) $package->flutter_cms,
-                'package_name' => $package->name,
-                'subscription_end_date' => $subscription->end_date,
-                'message' => $package->flutter_pos
-                    ? 'POS module is active'
-                    : 'POS module is not included in your plan',
-            ]);
-        } catch (\Exception $e) {
-            // Superadmin module not installed — allow access for development
-            return response()->json([
-                'success' => true,
-                'has_pos_license' => true,
-                'message' => 'License check bypassed (development mode)',
-            ]);
-        }
-    });
+    // --- License Check Endpoint (fail-closed: never grants on error) ---
+    Route::get('/v1/license/check', [\App\Http\Controllers\Api\V1\LicenseController::class, 'check']);
 
     // ============================================================
     // POS MODULE ROUTES (License required)
@@ -174,18 +138,6 @@ Route::middleware('auth:api')->group(function () {
         Route::get('/v1/shifts/history', [\App\Http\Controllers\Api\V1\ShiftController::class, 'history']);
     });
 
-    // ============================================================
-    // CMS ROUTES (Public - No license check needed for Flutter Web)
-    // ============================================================
-    Route::get('/v1/cms/home', [\App\Http\Controllers\Api\V1\CmsController::class, 'home']);
-    Route::get('/v1/cms/pages/{slug}', [\App\Http\Controllers\Api\V1\CmsController::class, 'page']);
-    Route::get('/v1/cms/posts', [\App\Http\Controllers\Api\V1\CmsController::class, 'posts']);
-    Route::get('/v1/cms/posts/{slug}', [\App\Http\Controllers\Api\V1\CmsController::class, 'post']);
-    Route::get('/v1/cms/products', [\App\Http\Controllers\Api\V1\CmsController::class, 'products']);
-    Route::get('/v1/cms/products/{slug}', [\App\Http\Controllers\Api\V1\CmsController::class, 'product']);
-    Route::get('/v1/cms/categories', [\App\Http\Controllers\Api\V1\CmsController::class, 'categories']);
-    Route::post('/v1/cms/contact', [\App\Http\Controllers\Api\V1\CmsController::class, 'contact']);
-
     // --- Multi-Location ---
     Route::get('/v1/locations', [\App\Http\Controllers\Api\V1\LocationController::class, 'index']);
     Route::get('/v1/locations/stock-summary', [\App\Http\Controllers\Api\V1\LocationController::class, 'stockSummary']);
@@ -194,4 +146,20 @@ Route::middleware('auth:api')->group(function () {
     Route::post('/v1/locations/transfer', [\App\Http\Controllers\Api\V1\LocationController::class, 'createTransfer']);
     Route::get('/v1/locations/transfers', [\App\Http\Controllers\Api\V1\LocationController::class, 'transfers']);
     Route::get('/v1/locations/sales-report', [\App\Http\Controllers\Api\V1\LocationController::class, 'salesReport']);
+});
+
+// ============================================================
+// CMS ROUTES (Public — no auth required, used by Flutter CMS web)
+// NOTE: the `api` middleware group (incl. throttle) still applies
+// because this file is loaded with ->middleware('api').
+// ============================================================
+Route::group(['middleware' => 'api'], function () {
+    Route::get('/v1/cms/home', [\App\Http\Controllers\Api\V1\CmsController::class, 'home']);
+    Route::get('/v1/cms/pages/{slug}', [\App\Http\Controllers\Api\V1\CmsController::class, 'page']);
+    Route::get('/v1/cms/posts', [\App\Http\Controllers\Api\V1\CmsController::class, 'posts']);
+    Route::get('/v1/cms/posts/{slug}', [\App\Http\Controllers\Api\V1\CmsController::class, 'post']);
+    Route::get('/v1/cms/products', [\App\Http\Controllers\Api\V1\CmsController::class, 'products']);
+    Route::get('/v1/cms/products/{slug}', [\App\Http\Controllers\Api\V1\CmsController::class, 'product']);
+    Route::get('/v1/cms/categories', [\App\Http\Controllers\Api\V1\CmsController::class, 'categories']);
+    Route::post('/v1/cms/contact', [\App\Http\Controllers\Api\V1\CmsController::class, 'contact']);
 });

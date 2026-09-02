@@ -388,20 +388,82 @@ class CmsController extends BaseApiController
     /**
      * Contact form submission
      * POST /api/v1/cms/contact
+     *
+     * Persists the submission as a customer/lead contact for the business
+     * and stores the message in the first available custom field.
      */
     public function contact(Request $request): JsonResponse
     {
         $request->validate([
-            'name' => 'required|string',
-            'email' => 'required|email',
-            'message' => 'required|string',
+            'name' => 'required|string|max:191',
+            'email' => 'required|email|max:191',
+            'message' => 'required|string|max:5000',
+            'phone' => 'nullable|string|max:50',
         ]);
 
-        $business_id = $request->input('business_id');
+        $business_id = (int) $request->input('business_id');
 
-        // Store as a contact or send email
-        // For now, just return success
-        return $this->successResponse([], 'Message sent successfully! We will get back to you soon.');
+        if (! $business_id) {
+            return $this->errorResponse('Business ID required', 400);
+        }
+
+        $business = DB::table('business')->find($business_id);
+
+        if (! $business) {
+            return $this->errorResponse('Business not found', 404);
+        }
+
+        // Verify the business has the CMS enabled through its package settings.
+        // Defensive: if the Superadmin module is unavailable in a non-production
+        // environment we allow the submission rather than break the public form.
+        try {
+            $cmsEnabled = DB::table('business')
+                ->join('subscriptions', 'subscriptions.business_id', '=', 'business.id')
+                ->join('packages', 'packages.id', '=', 'subscriptions.package_id')
+                ->where('business.id', $business_id)
+                ->where('subscriptions.status', 'active')
+                ->where('packages.flutter_cms', 1)
+                ->exists();
+        } catch (\Exception $e) {
+            $cmsEnabled = config('app.env') !== 'production';
+            if (! $cmsEnabled) {
+                \Log::error('CMS license table unavailable in production: ' . $e->getMessage());
+            }
+        }
+
+        if (! $cmsEnabled) {
+            return $this->errorResponse('CMS is not enabled for this business.', 403);
+        }
+
+        // Determine a valid created_by user for this business (contacts.created_by is mandatory).
+        $createdBy = DB::table('business')->where('id', $business_id)->value('owner_id')
+            ?? DB::table('users')->where('business_id', $business_id)
+                ->where('status', 'active')
+                ->orderBy('id')
+                ->value('id')
+            ?? 1;
+
+        $contactId = DB::table('contacts')->insertGetId([
+            'business_id' => $business_id,
+            'type' => 'customer',
+            'name' => $request->input('name'),
+            'email' => $request->input('email'),
+            'mobile' => $request->input('phone', ''),
+            'contact_status' => 'active',
+            'is_default' => 0,
+            'created_by' => $createdBy,
+            'custom_field1' => 'Website contact form',
+            'custom_field2' => $request->input('message'),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        \Log::info('CMS contact form submission persisted', [
+            'business_id' => $business_id,
+            'contact_id' => $contactId,
+        ]);
+
+        return $this->successResponse(['contact_id' => $contactId], 'Message sent successfully! We will get back to you soon.', 201);
     }
 
     /**

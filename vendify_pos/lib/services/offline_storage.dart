@@ -1,13 +1,30 @@
 import 'dart:convert';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:vendify_pos/models/product.dart';
 import 'package:vendify_pos/models/contact.dart';
 import 'package:vendify_pos/models/offline_transaction.dart';
 
+/// Persistence layer for the offline-first POS.
+///
+/// Storage policy (privacy by design):
+///  * Sync queue (pending sales — money + customer data)  -> [FlutterSecureStorage]
+///    (Android Keystore / iOS Keychain backed encryption).
+///  * Contacts cache (customer PII)                       -> [FlutterSecureStorage]
+///  * Product / category / tax caches (non-secret catalog)-> [SharedPreferences]
+///    (kept out of secure storage because large catalogs can exceed the
+///    Keystore-backed file's practical size limits).
+///
+/// Legacy plaintext queue/contact data written by older app versions is
+/// transparently migrated into secure storage and then erased.
 class OfflineStorage {
   final int businessId;
 
   OfflineStorage({this.businessId = 1});
+
+  static const _secure = FlutterSecureStorage(
+    aOptions: AndroidOptions(encryptedSharedPreferences: true),
+  );
 
   String _k(String key) => '${key}_biz_$businessId';
 
@@ -93,14 +110,28 @@ class OfflineStorage {
   }
 
   Future<void> saveContacts(List<Contact> contacts) async {
-    final prefs = await SharedPreferences.getInstance();
     final jsonList = contacts.map((c) => c.toJson()).toList();
-    await prefs.setString(_k(_keyContacts), jsonEncode(jsonList));
+    // Customer PII is stored encrypted (see class docs).
+    await _secure.write(
+      key: _k(_keyContacts),
+      value: jsonEncode(jsonList),
+    );
   }
 
   Future<List<Contact>> getCachedContacts({String? search}) async {
-    final prefs = await SharedPreferences.getInstance();
-    final data = prefs.getString(_k(_keyContacts));
+    var data = await _secure.read(key: _k(_keyContacts));
+
+    // One-time migration from the legacy plaintext SharedPreferences copy.
+    if (data == null) {
+      final prefs = await SharedPreferences.getInstance();
+      final legacy = prefs.getString(_k(_keyContacts));
+      if (legacy != null) {
+        await _secure.write(key: _k(_keyContacts), value: legacy);
+        await prefs.remove(_k(_keyContacts));
+        data = legacy;
+      }
+    }
+
     if (data == null) return [];
 
     try {
@@ -131,10 +162,23 @@ class OfflineStorage {
   }
 
   // ============ Sync Queue Management ============
+  // The queue holds unsynced sales — customer, totals and payment data —
+  // so it lives in ENCRYPTED storage, never plaintext prefs.
 
   Future<List<OfflineTransaction>> getSyncQueue() async {
-    final prefs = await SharedPreferences.getInstance();
-    final data = prefs.getString(_keySyncQueue);
+    var data = await _secure.read(key: _keySyncQueue);
+
+    // One-time migration from the legacy plaintext SharedPreferences copy.
+    if (data == null) {
+      final prefs = await SharedPreferences.getInstance();
+      final legacy = prefs.getString(_keySyncQueue);
+      if (legacy != null) {
+        await _secure.write(key: _keySyncQueue, value: legacy);
+        await prefs.remove(_keySyncQueue);
+        data = legacy;
+      }
+    }
+
     if (data == null) return [];
 
     try {
@@ -167,9 +211,8 @@ class OfflineStorage {
   }
 
   Future<void> _saveQueue(List<OfflineTransaction> queue) async {
-    final prefs = await SharedPreferences.getInstance();
     final jsonList = queue.map((t) => t.toJson()).toList();
-    await prefs.setString(_keySyncQueue, jsonEncode(jsonList));
+    await _secure.write(key: _keySyncQueue, value: jsonEncode(jsonList));
   }
 
   Future<int> getPendingTransactionsCount() async {
@@ -182,7 +225,9 @@ class OfflineStorage {
     await prefs.remove(_k(_keyProducts));
     await prefs.remove(_k(_keyCategories));
     await prefs.remove(_k(_keyTaxRates));
-    await prefs.remove(_k(_keyContacts));
     await prefs.remove(_k(_keyLastCatalogSync));
+
+    await _secure.delete(key: _k(_keyContacts));
+    await _secure.delete(key: _keySyncQueue);
   }
 }

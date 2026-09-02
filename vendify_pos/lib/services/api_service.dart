@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:pretty_dio_logger/pretty_dio_logger.dart';
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:vendify_pos/config/api_config.dart';
@@ -23,13 +24,29 @@ class ApiService {
       headers: Map<String, String>.from(ApiConfig.defaultHeaders),
     ));
 
-    _dio!.interceptors.add(PrettyDioLogger(
-      requestHeader: true,
-      requestBody: true,
-      responseBody: true,
-      error: true,
-      compact: true,
-    ));
+    // HTTP request/response logging is DEBUG-ONLY. The auth token is never
+    // written to logs, and response bodies may contain customer PII, so we
+    // only log request metadata (method + URL + status) in release builds.
+    if (kDebugMode) {
+      _dio!.interceptors.add(PrettyDioLogger(
+        requestHeader: true,
+        requestBody: true,
+        responseBody: true,
+        error: true,
+        compact: true,
+      ));
+    } else {
+      _dio!.interceptors.add(InterceptorsWrapper(
+        onRequest: (options, handler) {
+          debugPrint('Req ${options.method} ${options.uri}');
+          handler.next(options);
+        },
+        onResponse: (response, handler) {
+          debugPrint('Res ${response.statusCode} ${response.requestOptions.uri}');
+          handler.next(response);
+        },
+      ));
+    }
 
     _dio!.interceptors.add(InterceptorsWrapper(
       onRequest: (options, handler) {

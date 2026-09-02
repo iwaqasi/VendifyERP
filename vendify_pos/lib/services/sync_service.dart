@@ -25,56 +25,79 @@ class SyncService {
 
   // ============ Sync Catalog Data ============
 
-  Future<void> syncCatalog({int? locationId}) async {
-    try {
-      final params = <String, dynamic>{'per_page': 100};
-      if (locationId != null) params['location_id'] = locationId;
+  /// Fetch every page of a paginated API resource.
+  ///
+  /// POS terminals must have the COMPLETE catalog offline — previously only
+  /// page 1 (100 rows) was cached, silently hiding products from the grid.
+  /// Walks `meta.last_page` with a hard safety cap.
+  Future<List<dynamic>> _fetchPaginated(
+    String path, {
+    Map<String, dynamic>? queryParameters,
+    int maxPages = 200,
+  }) async {
+    final items = <dynamic>[];
+    var page = 1;
 
-      final results = await Future.wait([
-        _api.get('/v1/products', queryParameters: params),
-        _api.get('/v1/categories'),
-        _api.get('/v1/tax-rates'),
-        _api.get('/v1/contacts', queryParameters: {'type': 'customer', 'per_page': 100}),
-      ]);
+    while (page <= maxPages) {
+      final response = await _api.get(path, queryParameters: {
+        ...?queryParameters,
+        'page': page,
+      });
 
-      // Cache products
-      final prodRes = results[0];
-      if (prodRes.data['success'] == true) {
-        final products = (prodRes.data['data'] as List)
-            .map((p) => Product.fromJson(p))
-            .toList();
-        await _storage.saveProducts(products);
-      }
+      if (response.data['success'] != true) break;
 
-      // Cache categories
-      final catRes = results[1];
-      if (catRes.data['data'] is List) {
-        final categories = (catRes.data['data'] as List)
-            .map((c) => Category.fromJson(c))
-            .toList();
-        await _storage.saveCategories(categories);
-      }
+      final data = response.data['data'];
+      if (data is! List || data.isEmpty) break;
 
-      // Cache tax rates
-      final taxRes = results[2];
-      if (taxRes.data['data'] is List) {
-        final taxRates = (taxRes.data['data'] as List)
-            .map((t) => TaxRate.fromJson(t))
-            .toList();
-        await _storage.saveTaxRates(taxRates);
-      }
+      items.addAll(data);
 
-      // Cache contacts
-      final contactRes = results[3];
-      if (contactRes.data['success'] == true) {
-        final contacts = (contactRes.data['data'] as List)
-            .map((c) => Contact.fromJson(c))
-            .toList();
-        await _storage.saveContacts(contacts);
-      }
-    } catch (_) {
-      // Offline or error during sync; existing cache remains safe
+      final meta = response.data['meta'];
+      final lastPage = (meta is Map ? meta['last_page'] : null) ?? page;
+      if (page >= lastPage) break;
+      page++;
     }
+
+    return items;
+  }
+
+  Future<void> syncCatalog({int? locationId}) async {
+    // Products & contacts: fetch ALL pages (per_page 100 matches the
+    // server-side pagination cap).
+    final productParams = <String, dynamic>{'per_page': 100};
+    if (locationId != null) productParams['location_id'] = locationId;
+    final contactParams = <String, dynamic>{'type': 'customer', 'per_page': 100};
+
+    // Each resource syncs independently: a failure in one must not
+    // prevent the others (and their existing caches) from refreshing.
+    try {
+      final raw = await _fetchPaginated('/v1/products', queryParameters: productParams);
+      await _storage.saveProducts(
+          raw.map((p) => Product.fromJson(p as Map<String, dynamic>)).toList());
+    } catch (_) {/* offline — existing cache remains safe */}
+
+    try {
+      final raw = await _fetchPaginated('/v1/contacts', queryParameters: contactParams);
+      await _storage.saveContacts(
+          raw.map((c) => Contact.fromJson(c as Map<String, dynamic>)).toList());
+    } catch (_) {/* offline — existing cache remains safe */}
+
+    try {
+      final response = await _api.get('/v1/categories');
+      final data = response.data['data'];
+      if (data is List) {
+        await _storage.saveCategories(
+            data.map((c) => Category.fromJson(c as Map<String, dynamic>)).toList());
+      }
+    } catch (_) {/* offline — existing cache remains safe */}
+
+    try {
+      final response = await _api.get('/v1/tax-rates');
+      final data = response.data['data'];
+      if (data is List) {
+        await _storage.saveTaxRates(
+            data.map((t) => TaxRate.fromJson(t as Map<String, dynamic>)).toList());
+      }
+    } catch (_) {/* offline — existing cache remains safe */}
   }
 
   // ============ Sync Pending Transactions ============
