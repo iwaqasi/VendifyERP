@@ -152,6 +152,41 @@ class SellControllerTest extends TestCase
     }
 
     /** @test */
+    public function inclusive_tax_extracts_tax_from_the_line_total(): void
+    {
+        // Product with tax_type = 'inclusive' and sell_price_inc_tax = 110.
+        // 2 x 110 = 220 inclusive. Tax is EXTRACTED, not added:
+        //   base = 220 / 1.10 = 200, tax = 20.
+        $inclProduct = $this->createPosProduct([
+            'tax_type' => 'inclusive',
+        ], [
+            'variation' => [
+                'default_sell_price' => 100,
+                'sell_price_inc_tax' => 110, // 100 + 10% tax
+            ],
+        ]);
+
+        $payload = $this->salePayload([
+            'products' => [[
+                'product_id' => $inclProduct['product']->id,
+                'variation_id' => $inclProduct['variation']->id,
+                'quantity' => 2,
+                'tax_id' => $this->posData['taxRate']->id,
+            ]],
+            'payments' => [['amount' => 220, 'method' => 'cash']],
+        ]);
+
+        $response = $this->postSale($payload)->assertStatus(201);
+
+        $transaction = Transaction::findOrFail($response->json('data.id'));
+        // Total is 220 (server price 110 x 2), tax extracted is 20.
+        $this->assertEquals(220, (float) $transaction->final_total);
+        $this->assertEquals(20, round((float) $transaction->tax_amount, 4));
+        // base_before_tax should be 200, not 220.
+        $this->assertEquals(200, round((float) $transaction->total_before_tax, 4));
+    }
+
+    /** @test */
     public function payment_rows_are_created_for_the_tenant(): void
     {
         $response = $this->postSale($this->salePayload())->assertStatus(201);

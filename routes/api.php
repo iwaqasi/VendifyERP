@@ -166,5 +166,6 @@ Route::group(['middleware' => 'api'], function () {
     Route::get('/v1/cms/products', [\App\Http\Controllers\Api\V1\CmsController::class, 'products']);
     Route::get('/v1/cms/products/{slug}', [\App\Http\Controllers\Api\V1\CmsController::class, 'product']);
     Route::get('/v1/cms/categories', [\App\Http\Controllers\Api\V1\CmsController::class, 'categories']);
-    Route::post('/v1/cms/contact', [\App\Http\Controllers\Api\V1\CmsController::class, 'contact']);
+    Route::post('/v1/cms/contact', [\App\Http\Controllers\Api\V1\CmsController::class, 'contact'])
+        ->middleware('throttle:5,1'); // 5 submissions per minute per IP — prevents spam
 });
