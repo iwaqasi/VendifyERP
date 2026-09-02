@@ -44,7 +44,15 @@ class Handler extends ExceptionHandler
     public function register()
     {
         $this->reportable(function (Throwable $e) {
+            // Wave 3 — Sentry error reporting.
             //
+            // Fully inert until BOTH conditions hold:
+            //   1. sentry/sentry-laravel is installed (class_exists guard)
+            //   2. SENTRY_LARAVEL_DSN is configured
+            // This keeps local/dev/test environments silent by default.
+            if (config('sentry.dsn') && class_exists(\Sentry\SentrySdk::class)) {
+                \Sentry\SentrySdk::getCurrentHub()->captureException($e);
+            }
         });
     }
 }
