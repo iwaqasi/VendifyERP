@@ -37,6 +37,11 @@ jobs:
           extensions: mbstring, xml, ctype, iconv, intl, pdo_mysql, dom, filter, gd, json, bcmath, zip
           coverage: none
 
+      - name: Create required directories
+        run: |
+          mkdir -p bootstrap/cache storage/framework/{sessions,views,cache}
+          chmod -R 777 storage bootstrap/cache
+
       - name: Install composer dependencies
         run: composer install --prefer-dist --no-interaction --no-progress --no-security-blocking
 
