@@ -1,0 +1,16 @@
+# Enable WebAssembly MIME type
+AddType application/wasm .wasm
+
+# Enable JavaScript modules
+AddType application/javascript .js
+
+# Required CORS headers for CanvasKit WASM
+<FilesMatch "\.(wasm|js)$">
+    Header set Cross-Origin-Opener-Policy "same-origin"
+    Header set Cross-Origin-Embedder-Policy "require-corp"
+</FilesMatch>
+
+# Cache static assets
+<FilesMatch "\.(js|wasm|css|png|jpg|svg|ico|json)$">
+    Header set Cache-Control "public, max-age=604800"
+</FilesMatch>

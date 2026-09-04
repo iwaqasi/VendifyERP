@@ -75,9 +75,7 @@ use Illuminate\Support\Facades\Route;
 include_once 'install_r.php';
 
 Route::middleware(['setData'])->group(function () {
-    Route::get('/', function () {
-        return view('welcome');
-    });
+    Route::get('/', [\App\Http\Controllers\LandingController::class, 'index'])->name('landing');
 
     Auth::routes();
 
