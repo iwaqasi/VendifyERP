@@ -206,20 +206,78 @@ class BookingController extends Controller
             $business_id = request()->session()->get('user.business_id');
             $booking = Booking::where('business_id', $business_id)
                                 ->where('id', $id)
-                                ->with(['table', 'customer', 'correspondent', 'waiter', 'location'])
+                                ->with(['table', 'customer', 'correspondent', 'waiter', 'location', 'services.product', 'services.serviceStaff', 'tips.staff'])
                                 ->first();
             if (! empty($booking)) {
+                // If services relation is empty, check pos_appointments for matching appointment
+                if ($booking->services->isEmpty()) {
+                    $posAppt = \DB::table('pos_appointments')
+                        ->where('business_id', $business_id)
+                        ->where(function($q) use ($booking) {
+                            $q->where('contact_id', $booking->contact_id)
+                              ->where('appointment_start', $booking->booking_start);
+                        })
+                        ->first();
+
+                    if ($posAppt && !empty($posAppt->service_name)) {
+                        $serviceNames = explode(',', $posAppt->service_name);
+                        $totalCount = count($serviceNames);
+                        $unitPrice = $totalCount > 0 ? ((float)$posAppt->service_price / $totalCount) : (float)$posAppt->service_price;
+                        foreach ($serviceNames as $svcName) {
+                            $trimmedName = trim($svcName);
+                            if (empty($trimmedName)) continue;
+                            $prod = \App\Product::where('business_id', $business_id)
+                                ->where('name', $trimmedName)
+                                ->first();
+                            if (!$prod) {
+                                $prod = \App\Product::where('business_id', $business_id)
+                                    ->where('name', 'LIKE', '%' . $trimmedName . '%')
+                                    ->first();
+                            }
+                            if ($prod) {
+                                \App\BookingService::create([
+                                    'booking_id' => $booking->id,
+                                    'product_id' => $prod->id,
+                                    'service_staff_id' => $booking->waiter_id ?? $posAppt->staff_id,
+                                    'quantity' => 1,
+                                    'unit_price' => $unitPrice,
+                                    'line_total' => $unitPrice,
+                                ]);
+                            }
+                        }
+                        $booking->load(['services.product', 'services.serviceStaff']);
+                    }
+                }
+
                 $booking_start = $this->commonUtil->format_date($booking->booking_start, true);
                 $booking_end = $this->commonUtil->format_date($booking->booking_end, true);
 
                 $booking_statuses = [
                     'waiting' => __('lang_v1.waiting'),
                     'booked' => __('restaurant.booked'),
+                    'confirmed' => __('Confirmed'),
                     'completed' => __('restaurant.completed'),
                     'cancelled' => __('restaurant.cancelled'),
                 ];
 
-                return view('restaurant.booking.show', compact('booking', 'booking_start', 'booking_end', 'booking_statuses'));
+                // Load available services / products for adding more services
+                $service_products = \App\Product::where('business_id', $business_id)
+                    ->where('is_inactive', 0)
+                    ->select('id', 'name')
+                    ->orderBy('name')
+                    ->get();
+
+                // Load service staff
+                $service_staff = \App\User::forDropdown($business_id, false);
+
+                // Load tips for this booking
+                $tips = \App\StaffTip::where('business_id', $business_id)
+                    ->where('appointment_id', $booking->id)
+                    ->with('staff')
+                    ->orderBy('created_at', 'desc')
+                    ->get();
+
+                return view('restaurant.booking.show', compact('booking', 'booking_start', 'booking_end', 'booking_statuses', 'service_products', 'service_staff', 'tips'));
             }
         }
     }
@@ -421,9 +479,9 @@ class BookingController extends Controller
             $user_id = request()->session()->get('user.id');
             $today = \Carbon::now()->format('Y-m-d');
             $query = Booking::where('business_id', $business_id)
-                        ->where('booking_status', 'booked')
+                        ->whereIn('booking_status', ['booked', 'confirmed', 'waiting', 'completed'])
                         ->whereDate('booking_start', $today)
-                        ->with(['table', 'customer', 'correspondent', 'waiter', 'location']);
+                        ->with(['table', 'customer', 'correspondent', 'waiter', 'location', 'services.product', 'tips']);
 
             if (! empty(request()->location_id)) {
                 $query->where('location_id', request()->location_id);
@@ -435,8 +493,6 @@ class BookingController extends Controller
                         ->orWhere('correspondent_id', $user_id)
                         ->orWhere('waiter_id', $user_id);
                 });
-
-                //$query->where('created_by', $user_id);
             }
 
             return Datatables::of($query)
@@ -461,8 +517,243 @@ class BookingController extends Controller
                 ->editColumn('booking_end', function ($row) {
                     return $this->commonUtil->format_date($row->booking_end, true);
                 })
-               ->removeColumn('id')
+                ->addColumn('services', function ($row) {
+                    if ($row->services && $row->services->count() > 0) {
+                        return $row->services->map(function($s) {
+                            return $s->product ? $s->product->name : 'Service';
+                        })->implode(', ');
+                    }
+                    if (!empty($row->booking_note)) {
+                        return e($row->booking_note);
+                    }
+                    return '--';
+                })
+                ->addColumn('total_amount', function ($row) {
+                    $amt = $row->total_services_amount;
+                    return '<span class="badge bg-primary" style="font-size: 12px; font-weight: bold;">KD ' . number_format($amt, 3) . '</span>';
+                })
+                ->addColumn('tips_amount', function ($row) {
+                    $tips = $row->total_tips_amount;
+                    if ($tips > 0) {
+                        return '<span class="badge bg-green" style="font-size: 12px; font-weight: bold;">KD ' . number_format($tips, 3) . '</span>';
+                    }
+                    return '<span class="text-muted">--</span>';
+                })
+                ->addColumn('action', function ($row) {
+                    return '<button type="button" data-href="' . action([\App\Http\Controllers\Restaurant\BookingController::class, 'show'], [$row->id]) . '" class="btn btn-xs btn-info btn-modal" data-container=".view_modal"><i class="fa fa-eye"></i> ' . __('messages.view') . '</button>';
+                })
+                ->rawColumns(['total_amount', 'tips_amount', 'action', 'services'])
                 ->make(true);
+        }
+    }
+
+    /**
+     * Add a service to an existing booking (Scenario 1 on Main Website).
+     */
+    public function addService(Request $request, $id)
+    {
+        try {
+            $business_id = request()->session()->get('user.business_id');
+            $booking = Booking::where('business_id', $business_id)->findOrFail($id);
+
+            $productId = $request->input('product_id');
+            $quantity = (float) $request->input('quantity', 1);
+            $unitPrice = (float) $request->input('unit_price', 0);
+            $staffId = $request->input('service_staff_id') ?: $booking->waiter_id;
+            $lineTotal = round($quantity * $unitPrice, 3);
+
+            $service = \App\BookingService::create([
+                'booking_id' => $booking->id,
+                'product_id' => $productId,
+                'service_staff_id' => $staffId,
+                'quantity' => $quantity,
+                'unit_price' => $unitPrice,
+                'line_total' => $lineTotal,
+                'notes' => $request->input('notes'),
+            ]);
+
+            $product = \App\Product::find($productId);
+            $serviceName = $product ? $product->name : 'Service';
+
+            // Append to booking_note
+            $addition = $serviceName . ' (KD ' . number_format($lineTotal, 3) . ')';
+            $booking->booking_note = !empty($booking->booking_note) ? ($booking->booking_note . ', ' . $addition) : $addition;
+            $booking->save();
+
+            // Also update pos_appointments if exists
+            $posAppt = \DB::table('pos_appointments')
+                ->where('business_id', $business_id)
+                ->where(function($q) use ($booking) {
+                    $q->where('contact_id', $booking->contact_id)
+                      ->where('appointment_start', $booking->booking_start);
+                })
+                ->first();
+
+            if ($posAppt) {
+                $newSvcName = !empty($posAppt->service_name) ? ($posAppt->service_name . ', ' . $serviceName) : $serviceName;
+                $newPrice = (float)$posAppt->service_price + $lineTotal;
+                \DB::table('pos_appointments')->where('id', $posAppt->id)->update([
+                    'service_name' => $newSvcName,
+                    'service_price' => $newPrice,
+                    'updated_at' => now(),
+                ]);
+            }
+
+            return response()->json([
+                'success' => true,
+                'msg' => __('Service added successfully'),
+                'service' => $service,
+            ]);
+        } catch (\Exception $e) {
+            \Log::emergency('File:'.$e->getFile().'Line:'.$e->getLine().'Message:'.$e->getMessage());
+            return response()->json([
+                'success' => false,
+                'msg' => __('messages.something_went_wrong'),
+            ], 500);
+        }
+    }
+
+    /**
+     * Record a tip for staff member on a booking (Scenario 2 on Main Website).
+     */
+    public function recordTip(Request $request, $id)
+    {
+        try {
+            $business_id = request()->session()->get('user.business_id');
+            $booking = Booking::where('business_id', $business_id)->findOrFail($id);
+
+            $staffId = $request->input('staff_id');
+            $amount = (float) $request->input('amount', 0);
+            $paymentMethod = $request->input('payment_method', 'cash');
+
+            if ($amount <= 0) {
+                return response()->json(['success' => false, 'msg' => 'Please enter a valid tip amount.'], 422);
+            }
+
+            $tip = \App\StaffTip::create([
+                'business_id' => $business_id,
+                'staff_id' => $staffId,
+                'appointment_id' => $booking->id,
+                'location_id' => $booking->location_id,
+                'amount' => $amount,
+                'payment_method' => $paymentMethod,
+                'status' => 'pending',
+                'notes' => $request->input('notes'),
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'msg' => __('Tip recorded successfully'),
+                'tip' => $tip,
+            ]);
+        } catch (\Exception $e) {
+            \Log::emergency('File:'.$e->getFile().'Line:'.$e->getLine().'Message:'.$e->getMessage());
+            return response()->json([
+                'success' => false,
+                'msg' => __('messages.something_went_wrong'),
+            ], 500);
+        }
+    }
+
+    /**
+     * Staff tips report & payout overview on main website (Scenario 2 & 3).
+     */
+    public function staffTipsReport(Request $request)
+    {
+        $business_id = request()->session()->get('user.business_id');
+
+        $staff_members = \App\User::forDropdown($business_id, false);
+
+        $startDate = $request->input('start_date', now()->startOfMonth()->toDateString());
+        $endDate = $request->input('end_date', now()->endOfMonth()->toDateString());
+        $staffId = $request->input('staff_id');
+        $status = $request->input('status');
+
+        $query = \App\StaffTip::where('business_id', $business_id)
+            ->whereDate('created_at', '>=', $startDate)
+            ->whereDate('created_at', '<=', $endDate)
+            ->with(['staff', 'booking.customer', 'transaction', 'paidOutBy']);
+
+        if (!empty($staffId)) {
+            $query->where('staff_id', $staffId);
+        }
+        if (!empty($status) && in_array($status, ['pending', 'paid_out'])) {
+            $query->where('status', $status);
+        }
+
+        $tips = $query->orderBy('created_at', 'desc')->get();
+
+        $totalTips = (float) $tips->sum('amount');
+        $pendingTips = (float) $tips->where('status', 'pending')->sum('amount');
+        $paidTips = (float) $tips->where('status', 'paid_out')->sum('amount');
+
+        // Staff breakdown summary
+        $staffSummary = [];
+        $groupedByStaff = $tips->groupBy('staff_id');
+        foreach ($groupedByStaff as $sId => $staffTips) {
+            $staffUser = $staffTips->first()->staff;
+            $staffSummary[] = [
+                'staff_id' => $sId,
+                'staff_name' => $staffUser ? $staffUser->user_full_name : 'Staff #' . $sId,
+                'total_tips' => (float) $staffTips->sum('amount'),
+                'pending_tips' => (float) $staffTips->where('status', 'pending')->sum('amount'),
+                'paid_tips' => (float) $staffTips->where('status', 'paid_out')->sum('amount'),
+                'count' => $staffTips->count(),
+            ];
+        }
+
+        return view('restaurant.booking.staff_tips', compact(
+            'tips',
+            'staff_members',
+            'startDate',
+            'endDate',
+            'staffId',
+            'status',
+            'totalTips',
+            'pendingTips',
+            'paidTips',
+            'staffSummary'
+        ));
+    }
+
+    /**
+     * Mark pending tips as paid out.
+     */
+    public function payoutStaffTips(Request $request)
+    {
+        try {
+            $business_id = request()->session()->get('user.business_id');
+            $userId = request()->session()->get('user.id');
+            $staffId = $request->input('staff_id');
+            $tipIds = $request->input('tip_ids');
+
+            $query = \App\StaffTip::where('business_id', $business_id)
+                ->where('status', 'pending');
+
+            if (!empty($staffId)) {
+                $query->where('staff_id', $staffId);
+            }
+            if (!empty($tipIds) && is_array($tipIds)) {
+                $query->whereIn('id', $tipIds);
+            }
+
+            $count = $query->update([
+                'status' => 'paid_out',
+                'paid_out_at' => now(),
+                'paid_out_by' => $userId,
+                'updated_at' => now(),
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'msg' => __(':count tips successfully paid out.', ['count' => $count]),
+            ]);
+        } catch (\Exception $e) {
+            \Log::emergency('File:'.$e->getFile().'Line:'.$e->getLine().'Message:'.$e->getMessage());
+            return response()->json([
+                'success' => false,
+                'msg' => __('messages.something_went_wrong'),
+            ], 500);
         }
     }
 }

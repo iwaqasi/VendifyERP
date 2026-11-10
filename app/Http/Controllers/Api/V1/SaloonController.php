@@ -135,7 +135,7 @@ class SaloonController extends BaseApiController
             $bookingContactId = $walkIn ? $walkIn->id : null;
         }
 
-        DB::table('bookings')->insert([
+        $bookingId = DB::table('bookings')->insertGetId([
             'contact_id' => $bookingContactId,
             'waiter_id' => $staffId,
             'business_id' => $business_id,
@@ -148,6 +148,28 @@ class SaloonController extends BaseApiController
             'created_at' => now(),
             'updated_at' => now(),
         ]);
+
+        // Also insert into booking_services so web shows service line immediately
+        $svcName = $request->input('service_name');
+        $svcPrice = (float) $request->input('service_price', 0);
+        if (!empty($svcName)) {
+            $mProd = DB::table('products')->where('business_id', $business_id)->where('name', $svcName)->first();
+            if (!$mProd) {
+                $mProd = DB::table('products')->where('business_id', $business_id)->where('name', 'LIKE', '%' . $svcName . '%')->first();
+            }
+            if ($mProd) {
+                DB::table('booking_services')->insert([
+                    'booking_id' => $bookingId,
+                    'product_id' => $mProd->id,
+                    'service_staff_id' => $staffId,
+                    'quantity' => 1,
+                    'unit_price' => $svcPrice,
+                    'line_total' => $svcPrice,
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+            }
+        }
 
         return $this->successResponse(
             ['appointment_id' => $id],
@@ -492,15 +514,46 @@ class SaloonController extends BaseApiController
             $serviceNote .= ' — ' . $appointment->notes;
         }
 
-        DB::table('bookings')
+        $matchingBooking = DB::table('bookings')
             ->where('business_id', $business_id)
             ->where('contact_id', $appointment->contact_id)
             ->where('booking_start', $appointment->appointment_start)
-            ->update([
-                'booking_note' => $serviceNote,
-                'booking_end'  => $endTime,
-                'updated_at'   => now(),
-            ]);
+            ->first();
+
+        if ($matchingBooking) {
+            DB::table('bookings')
+                ->where('id', $matchingBooking->id)
+                ->update([
+                    'booking_note' => $serviceNote,
+                    'booking_end'  => $endTime,
+                    'updated_at'   => now(),
+                ]);
+
+            // Sync booking_services
+            DB::table('booking_services')->where('booking_id', $matchingBooking->id)->delete();
+            if ($request->has('services') && is_array($request->input('services'))) {
+                foreach ($request->input('services') as $s) {
+                    $sName = $s['name'] ?? '';
+                    $sPrice = (float) ($s['price'] ?? 0);
+                    $mProd = DB::table('products')->where('business_id', $business_id)->where('name', $sName)->first();
+                    if (!$mProd) {
+                        $mProd = DB::table('products')->where('business_id', $business_id)->where('name', 'LIKE', '%' . $sName . '%')->first();
+                    }
+                    if ($mProd) {
+                        DB::table('booking_services')->insert([
+                            'booking_id' => $matchingBooking->id,
+                            'product_id' => $mProd->id,
+                            'service_staff_id' => $appointment->staff_id,
+                            'quantity' => 1,
+                            'unit_price' => $sPrice,
+                            'line_total' => $sPrice,
+                            'created_at' => now(),
+                            'updated_at' => now(),
+                        ]);
+                    }
+                }
+            }
+        }
 
         $updated = DB::table('pos_appointments')->where('id', $id)->first();
 

@@ -196,7 +196,7 @@ class _AppointmentDetailDialogState extends State<AppointmentDetailDialog> {
 
   void _addServiceToAppointment(Map<String, dynamic> svc) async {
     final name = (svc['name'] ?? svc['service_name'] ?? '').toString();
-    final price = _parsePrice(svc['price'] ?? svc['sell_price_inc_tax'] ?? 0);
+    double price = _parsePrice(svc['price'] ?? svc['sell_price_inc_tax'] ?? 0);
     final duration = (svc['duration'] ?? svc['service_duration_minutes'] ?? 30) as int;
 
     // Check duplicate
@@ -205,6 +205,17 @@ class _AppointmentDetailDialogState extends State<AppointmentDetailDialog> {
         SnackBar(content: Text('$name is already in this appointment'), backgroundColor: AppTheme.warning),
       );
       return;
+    }
+
+    // If price is 0 or flexible, prompt with denomination buttons
+    if (price <= 0) {
+      final enteredPrice = await _showPriceDialog(
+        context: context,
+        title: 'Set Price for $name',
+        initialPrice: 0,
+      );
+      if (enteredPrice == null) return; // user cancelled
+      price = enteredPrice;
     }
 
     setState(() {
@@ -220,11 +231,26 @@ class _AppointmentDetailDialogState extends State<AppointmentDetailDialog> {
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Added "$name" to appointment'),
+          content: Text('Added "$name" (KD ${price.toStringAsFixed(3)}) to appointment'),
           backgroundColor: AppTheme.success,
           duration: const Duration(seconds: 2),
         ),
       );
+    }
+  }
+
+  void _editServicePrice(int index) async {
+    final item = _services[index];
+    final newPrice = await _showPriceDialog(
+      context: context,
+      title: 'Update Price for ${item.name}',
+      initialPrice: item.price,
+    );
+    if (newPrice != null) {
+      setState(() {
+        item.price = newPrice;
+      });
+      await _syncServicesToBackend();
     }
   }
 
@@ -250,6 +276,265 @@ class _AppointmentDetailDialogState extends State<AppointmentDetailDialog> {
     }
   }
 
+  Widget _denomChip(String label, VoidCallback onTap) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(6),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+        decoration: BoxDecoration(
+          color: AppTheme.primary.withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(color: AppTheme.primary.withValues(alpha: 0.3)),
+        ),
+        child: Text(
+          label,
+          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppTheme.primary),
+        ),
+      ),
+    );
+  }
+
+  Widget _presetChip(String label, VoidCallback onTap) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(6),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+        decoration: BoxDecoration(
+          color: const Color(0xFFE91E63).withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(color: const Color(0xFFE91E63).withValues(alpha: 0.25)),
+        ),
+        child: Text(
+          label,
+          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFFE91E63)),
+        ),
+      ),
+    );
+  }
+
+  Future<double?> _showPriceDialog({
+    required BuildContext context,
+    required String title,
+    required double initialPrice,
+  }) async {
+    double currentPrice = initialPrice > 0 ? initialPrice : 0.0;
+    final controller = TextEditingController(
+      text: currentPrice > 0 ? currentPrice.toStringAsFixed(3) : '',
+    );
+
+    return showDialog<double>(
+      context: context,
+      builder: (dlgCtx) {
+        return StatefulBuilder(
+          builder: (context, setDlgState) {
+            void addAmount(double amt) {
+              final val = double.tryParse(controller.text) ?? 0.0;
+              final newVal = val + amt;
+              controller.text = newVal.toStringAsFixed(3);
+              setDlgState(() {});
+            }
+
+            void setAmount(double amt) {
+              controller.text = amt.toStringAsFixed(3);
+              setDlgState(() {});
+            }
+
+            return AlertDialog(
+              backgroundColor: AppTheme.surface,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              title: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFE91E63).withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Icon(Icons.monetization_on, color: Color(0xFFE91E63), size: 20),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      title,
+                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppTheme.textPrimary),
+                    ),
+                  ),
+                ],
+              ),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Service Price (KD):', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.textSecondary)),
+                    const SizedBox(height: 6),
+                    TextField(
+                      controller: controller,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      autofocus: true,
+                      style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: AppTheme.primary),
+                      decoration: InputDecoration(
+                        prefixText: 'KD ',
+                        prefixStyle: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppTheme.primary),
+                        suffixIcon: IconButton(
+                          icon: const Icon(Icons.clear, size: 18),
+                          onPressed: () {
+                            controller.clear();
+                            setDlgState(() {});
+                          },
+                        ),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    const Text('Quick Denominations (+KD):', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppTheme.textMuted)),
+                    const SizedBox(height: 6),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: [
+                        _denomChip('+0.500', () => addAmount(0.5)),
+                        _denomChip('+1.000', () => addAmount(1.0)),
+                        _denomChip('+2.000', () => addAmount(2.0)),
+                        _denomChip('+5.000', () => addAmount(5.0)),
+                        _denomChip('+10.00', () => addAmount(10.0)),
+                        _denomChip('+20.00', () => addAmount(20.0)),
+                        _denomChip('+50.00', () => addAmount(50.0)),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    const Text('Presets:', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppTheme.textMuted)),
+                    const SizedBox(height: 6),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: [
+                        _presetChip('KD 5', () => setAmount(5.0)),
+                        _presetChip('KD 10', () => setAmount(10.0)),
+                        _presetChip('KD 15', () => setAmount(15.0)),
+                        _presetChip('KD 25', () => setAmount(25.0)),
+                        _presetChip('KD 35', () => setAmount(35.0)),
+                        _presetChip('KD 50', () => setAmount(50.0)),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dlgCtx, null),
+                  child: const Text('Cancel', style: TextStyle(color: AppTheme.textMuted)),
+                ),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppTheme.primary,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  ),
+                  onPressed: () {
+                    final price = double.tryParse(controller.text) ?? 0.0;
+                    Navigator.pop(dlgCtx, price);
+                  },
+                  child: const Text('Confirm', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  void _showAddCustomServiceDialog() async {
+    final nameCtrl = TextEditingController();
+    double price = 0.0;
+    int duration = 30;
+
+    await showDialog(
+      context: context,
+      builder: (dlgCtx) {
+        return StatefulBuilder(
+          builder: (context, setDlgState) {
+            void addAmt(double amt) {
+              price += amt;
+              setDlgState(() {});
+            }
+            void setAmt(double amt) {
+              price = amt;
+              setDlgState(() {});
+            }
+
+            return AlertDialog(
+              backgroundColor: AppTheme.surface,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              title: const Row(
+                children: [
+                  Icon(Icons.add_circle, color: Color(0xFFE91E63)),
+                  SizedBox(width: 8),
+                  Text('Add Custom Service', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                ],
+              ),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Service Name:*', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                    const SizedBox(height: 4),
+                    TextField(
+                      controller: nameCtrl,
+                      autofocus: true,
+                      decoration: InputDecoration(
+                        hintText: 'e.g. Special Beard Trim, Face Bleach',
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Text('Price: KD ${price.toStringAsFixed(3)}', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppTheme.primary)),
+                    const SizedBox(height: 6),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: [
+                        _denomChip('+0.500', () => addAmt(0.5)),
+                        _denomChip('+1.000', () => addAmt(1.0)),
+                        _denomChip('+2.000', () => addAmt(2.0)),
+                        _denomChip('+5.000', () => addAmt(5.0)),
+                        _denomChip('+10.00', () => addAmt(10.0)),
+                        _denomChip('+20.00', () => addAmt(20.0)),
+                        _presetChip('Clear', () => setAmt(0.0)),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(onPressed: () => Navigator.pop(dlgCtx), child: const Text('Cancel')),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primary),
+                  onPressed: () {
+                    final name = nameCtrl.text.trim();
+                    if (name.isEmpty) return;
+                    Navigator.pop(dlgCtx);
+                    _addServiceToAppointment({
+                      'name': name,
+                      'price': price,
+                      'duration': duration,
+                    });
+                  },
+                  child: const Text('Add Service', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
   void _showAddServiceSheet() {
     final available = widget.availableServices;
     if (available.isEmpty) {
@@ -259,66 +544,125 @@ class _AppointmentDetailDialogState extends State<AppointmentDetailDialog> {
       return;
     }
 
+    String searchQuery = '';
+
     showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
       backgroundColor: AppTheme.surface,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
       builder: (ctx) {
-        return Container(
-          padding: const EdgeInsets.all(16),
-          constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.6),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        return StatefulBuilder(
+          builder: (bottomSheetCtx, setSheetState) {
+            final filtered = available.where((s) {
+              if (searchQuery.trim().isEmpty) return true;
+              final n = (s['name'] ?? '').toString().toLowerCase();
+              return n.contains(searchQuery.trim().toLowerCase());
+            }).toList();
+
+            return Container(
+              padding: const EdgeInsets.all(16),
+              constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.75),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('Select Add-on Service', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppTheme.textPrimary)),
-                  IconButton(icon: const Icon(Icons.close, size: 20), onPressed: () => Navigator.pop(ctx)),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text('Select Add-on Service', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppTheme.textPrimary)),
+                      IconButton(icon: const Icon(Icons.close, size: 20), onPressed: () => Navigator.pop(ctx)),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+
+                  // Search Bar + Custom Service Button
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          decoration: InputDecoration(
+                            hintText: 'Search service...',
+                            prefixIcon: const Icon(Icons.search, size: 18),
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                            isDense: true,
+                          ),
+                          onChanged: (val) {
+                            setSheetState(() => searchQuery = val);
+                          },
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      ElevatedButton.icon(
+                        icon: const Icon(Icons.add, size: 16, color: Colors.white),
+                        label: const Text('Custom', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFFE91E63),
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        ),
+                        onPressed: () {
+                          Navigator.pop(ctx);
+                          _showAddCustomServiceDialog();
+                        },
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+
+                  Expanded(
+                    child: ListView.separated(
+                      itemCount: filtered.length,
+                      separatorBuilder: (_, __) => const Divider(height: 1, color: AppTheme.border),
+                      itemBuilder: (ctx, i) {
+                        final s = filtered[i];
+                        final name = (s['name'] ?? '').toString();
+                        final price = _parsePrice(s['price'] ?? s['sell_price_inc_tax'] ?? 0);
+                        final dur = s['duration'] ?? 30;
+
+                        final isAlreadyAdded = _services.any((item) => item.name.toLowerCase() == name.toLowerCase());
+
+                        return ListTile(
+                          dense: true,
+                          leading: Container(
+                            width: 34, height: 34,
+                            decoration: BoxDecoration(color: const Color(0xFFE91E63).withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
+                            child: const Icon(Icons.spa, color: Color(0xFFE91E63), size: 18),
+                          ),
+                          title: Text(name, style: TextStyle(fontWeight: FontWeight.w600, color: isAlreadyAdded ? AppTheme.textMuted : AppTheme.textPrimary)),
+                          subtitle: Text(
+                            price <= 0 ? '$dur min  •  Flexible Price (Tap to enter)' : '$dur min',
+                            style: TextStyle(fontSize: 11, color: price <= 0 ? const Color(0xFFE91E63) : AppTheme.textSecondary, fontWeight: price <= 0 ? FontWeight.bold : FontWeight.normal),
+                          ),
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                price > 0 ? 'KD ${price.toStringAsFixed(3)}' : 'Set Price',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  color: price > 0 ? AppTheme.primary : const Color(0xFFE91E63),
+                                  fontSize: 13,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              isAlreadyAdded
+                                  ? const Icon(Icons.check_circle, color: AppTheme.success, size: 18)
+                                  : const Icon(Icons.add_circle_outline, color: AppTheme.primary, size: 20),
+                            ],
+                          ),
+                          onTap: isAlreadyAdded ? null : () {
+                            Navigator.pop(ctx);
+                            _addServiceToAppointment(s);
+                          },
+                        );
+                      },
+                    ),
+                  ),
                 ],
               ),
-              const SizedBox(height: 8),
-              Expanded(
-                child: ListView.separated(
-                  itemCount: available.length,
-                  separatorBuilder: (_, __) => const Divider(height: 1, color: AppTheme.border),
-                  itemBuilder: (ctx, i) {
-                    final s = available[i];
-                    final name = (s['name'] ?? '').toString();
-                    final price = _parsePrice(s['price'] ?? s['sell_price_inc_tax'] ?? 0);
-                    final dur = s['duration'] ?? 30;
-
-                    final isAlreadyAdded = _services.any((item) => item.name.toLowerCase() == name.toLowerCase());
-
-                    return ListTile(
-                      dense: true,
-                      leading: Container(
-                        width: 34, height: 34,
-                        decoration: BoxDecoration(color: const Color(0xFFE91E63).withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
-                        child: const Icon(Icons.spa, color: Color(0xFFE91E63), size: 18),
-                      ),
-                      title: Text(name, style: TextStyle(fontWeight: FontWeight.w600, color: isAlreadyAdded ? AppTheme.textMuted : AppTheme.textPrimary)),
-                      subtitle: Text('$dur min', style: const TextStyle(fontSize: 11, color: AppTheme.textSecondary)),
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text('KD ${price.toStringAsFixed(3)}', style: const TextStyle(fontWeight: FontWeight.bold, color: AppTheme.primary, fontSize: 13)),
-                          const SizedBox(width: 8),
-                          isAlreadyAdded
-                              ? const Icon(Icons.check_circle, color: AppTheme.success, size: 18)
-                              : const Icon(Icons.add_circle_outline, color: AppTheme.primary, size: 20),
-                        ],
-                      ),
-                      onTap: isAlreadyAdded ? null : () {
-                        Navigator.pop(ctx);
-                        _addServiceToAppointment(s);
-                      },
-                    );
-                  },
-                ),
-              ),
-            ],
-          ),
+            );
+          },
         );
       },
     );
@@ -518,7 +862,28 @@ class _AppointmentDetailDialogState extends State<AppointmentDetailDialog> {
                       ],
                     ),
                   ),
-                  Text('KD ${s.price.toStringAsFixed(3)}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.primary)),
+                  InkWell(
+                    onTap: canModifyServices ? () => _editServicePrice(i) : null,
+                    borderRadius: BorderRadius.circular(6),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: AppTheme.primary.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(color: AppTheme.primary.withValues(alpha: 0.2)),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text('KD ${s.price.toStringAsFixed(3)}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.primary)),
+                          if (canModifyServices) ...[
+                            const SizedBox(width: 4),
+                            const Icon(Icons.edit, size: 12, color: AppTheme.primary),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ),
                   if (canModifyServices && _services.length > 1) ...[
                     const SizedBox(width: 6),
                     IconButton(

@@ -452,6 +452,10 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     });
 
     Route::get('restaurant/bookings/get-todays-bookings', [Restaurant\BookingController::class, 'getTodaysBookings']);
+    Route::post('restaurant/bookings/{id}/add-service', [Restaurant\BookingController::class, 'addService']);
+    Route::post('restaurant/bookings/{id}/record-tip', [Restaurant\BookingController::class, 'recordTip']);
+    Route::get('restaurant/staff-tips', [Restaurant\BookingController::class, 'staffTipsReport']);
+    Route::post('restaurant/staff-tips/payout', [Restaurant\BookingController::class, 'payoutStaffTips']);
     Route::resource('restaurant/bookings', Restaurant\BookingController::class, ['as' => 'restaurant.bookings']);
     Route::post('restaurant/bookings/{id}/convert-to-invoice', [Restaurant\BookingController::class, 'convertToInvoice']);
 

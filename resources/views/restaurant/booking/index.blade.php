@@ -35,15 +35,19 @@
                 </div>
                 <!-- /.box-header -->
                 <div class="box-body">
-                    <table class="table table-bordered table-condensed" id="todays_bookings_table">
+                    <table class="table table-bordered table-condensed table-striped" id="todays_bookings_table">
                         <thead>
-                        <tr>
+                        <tr style="background: #f4f6f9;">
                             <th>@lang('contact.customer')</th>
+                            <th>@lang('Services')</th>
                             <th>@lang('restaurant.booking_starts')</th>
                             <th>@lang('restaurant.booking_ends')</th>
-                            <th>@lang('restaurant.table')</th>
-                            <th>@lang('messages.location')</th>
+                            <th class="text-center">@lang('Total Amount')</th>
+                            <th class="text-center">@lang('Tips')</th>
                             <th>@lang('restaurant.service_staff')</th>
+                            <th>Station / Chair</th>
+                            <th>@lang('messages.location')</th>
+                            <th class="text-center">@lang('messages.action')</th>
                         </tr>
                         </thead>
                     </table>
@@ -60,6 +64,7 @@
                         <div class="col-sm-12 text-right">
                             <button type="button" class="btn btn-primary" id="add_new_booking_btn"><i class="fa fa-plus"></i> @lang('restaurant.add_booking')</button>
                             <a href="{{ action([\App\Http\Controllers\StaffScheduleController::class, 'index']) }}" class="btn btn-info"><i class="fa fa-clock-o"></i> Staff Schedules</a>
+                            <a href="{{ action([\App\Http\Controllers\Restaurant\BookingController::class, 'staffTipsReport']) }}" class="btn btn-warning"><i class="fa fa-heart"></i> Staff Tips & Daily Summary</a>
                         </div>
                     </div>
                     <div class="row">
@@ -262,11 +267,15 @@
                             },
                             columns: [
                                 {data: 'customer'},
+                                {data: 'services', name: 'services'},
                                 {data: 'booking_start', name: 'booking_start'},
                                 {data: 'booking_end', name: 'booking_end'},
+                                {data: 'total_amount', name: 'total_amount', className: 'text-center'},
+                                {data: 'tips_amount', name: 'tips_amount', className: 'text-center'},
+                                {data: 'waiter'},
                                 {data: 'table'},
                                 {data: 'location'},
-                                {data: 'waiter'},
+                                {data: 'action', name: 'action', className: 'text-center'},
                             ]
                         });
             $('button#add_new_booking_btn').click( function(){

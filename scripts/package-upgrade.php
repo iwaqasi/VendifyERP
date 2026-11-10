@@ -95,6 +95,8 @@ $directories = [
     'database/migrations',
     'routes',
     'Modules/Superadmin/Http/Controllers',
+    'Modules/Superadmin/Routes',
+    'resources/views/restaurant/booking',
     'resources/views/business/partials',
     'resources/views/myfatoorah',
     'resources/views/install',

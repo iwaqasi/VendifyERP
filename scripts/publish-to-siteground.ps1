@@ -28,7 +28,7 @@ if (-not (Test-Path $KeyPath)) {
 Write-Host "================================================================" -ForegroundColor Cyan
 Write-Host "  VendifyERP — Automated Production Publish to SiteGround" -ForegroundColor Cyan
 Write-Host "================================================================" -ForegroundColor Cyan
-Write-Host "Target: $SshUser@$SshHost:$SshPort ($RemoteDir)" -ForegroundColor Gray
+Write-Host "Target: $SshUser@${SshHost}:${SshPort} ($RemoteDir)" -ForegroundColor Gray
 Write-Host "Key:    $KeyPath" -ForegroundColor Gray
 
 # 1. Run local tests first
@@ -90,22 +90,18 @@ set -e
 echo '=== Extracting Upgrade Package ==='
 cd $RemoteDir
 
-# Detect PHP binary
-PHP_BIN="php"
-for p in /usr/local/bin/php8.3 /usr/local/bin/php8.2 /usr/local/bin/php8.1; do
-    if [ -x "\$p" ]; then
-        PHP_BIN="\$p"
-        break
-    fi
-done
-echo "Using PHP: \$PHP_BIN"
+PHP_BIN="/usr/local/bin/php83"
+if [ ! -x "`$PHP_BIN" ]; then
+    PHP_BIN="php"
+fi
+echo "Using PHP: `$PHP_BIN"
 
 # Extract archive
 unzip -o -q ~/vendify-upgrade-latest.zip -d $RemoteDir
 echo '✓ Files extracted.'
 
 # Run upgrade runner (runs migrations, clears/rebuilds caches, permissions)
-\$PHP_BIN upgrade.php --skip-backup
+`$PHP_BIN upgrade.php --skip-backup
 
 echo '=== Deployment Finished Successfully! ==='
 "@

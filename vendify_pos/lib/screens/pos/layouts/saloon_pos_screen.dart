@@ -500,10 +500,12 @@ class _SaloonPosScreenState extends ConsumerState<SaloonPosScreen> {
       appointment: appointment,
       posService: _posService,
       staff: _staff,
-      availableServices: _products.where((p) => p.type == 'service' || p.sellPriceIncTax > 0).map((p) => {
+      availableServices: _products.map((p) => {
+        'id': p.id,
         'name': p.name,
         'price': p.sellPriceIncTax,
         'duration': 30,
+        'is_flexible': p.sellPriceIncTax <= 0,
       }).toList(),
       onComplete: (result) {
         // Add completed services to the cart (skip duplicates)

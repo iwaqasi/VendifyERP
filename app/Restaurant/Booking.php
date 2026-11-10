@@ -53,6 +53,42 @@ class Booking extends Model
         return $this->hasMany(\App\BookingService::class, 'booking_id');
     }
 
+    /**
+     * The tips associated with this booking.
+     */
+    public function tips()
+    {
+        return $this->hasMany(\App\StaffTip::class, 'appointment_id');
+    }
+
+    /**
+     * Total amount from services or note.
+     */
+    public function getTotalServicesAmountAttribute()
+    {
+        if ($this->services && $this->services->count() > 0) {
+            return (float) $this->services->sum('line_total');
+        }
+
+        // Try to parse KD amount from booking_note: e.g. "Haircut (KD 15.000)"
+        if (!empty($this->booking_note) && preg_match('/KD\s*([\d\.]+)/i', $this->booking_note, $matches)) {
+            return (float) $matches[1];
+        }
+
+        return 0.0;
+    }
+
+    /**
+     * Total tips recorded for this booking.
+     */
+    public function getTotalTipsAmountAttribute()
+    {
+        if ($this->relationLoaded('tips') || $this->tips()->exists()) {
+            return (float) $this->tips->sum('amount');
+        }
+        return 0.0;
+    }
+
     public static function createBooking($input)
     {
         $data = [

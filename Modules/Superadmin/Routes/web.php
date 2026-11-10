@@ -68,7 +68,7 @@ Route::middleware('web', 'SetSessionData', 'auth', 'language', 'timezone', 'Admi
     Route::resource('/subscription', 'Modules\Superadmin\Http\Controllers\SubscriptionController');
 
     Route::get('/subscription/{subcription_id}/force-active', [Modules\Superadmin\Http\Controllers\SubscriptionController::class, 'forceActive'])->name('force-active');
-    Route::get('/myfatoorah-callback', [Modules\Superadmin\Http\Controllers\SubscriptionController::class, 'myfatoorahcallback'])->name('myfatoorah_callback');
+    Route::get('/myfatoorah-callback', [Modules\Superadmin\Http\Controllers\SubscriptionController::class, 'myfatoorahcallback'])->name('superadmin_myfatoorah_callback');
 
 });
 
