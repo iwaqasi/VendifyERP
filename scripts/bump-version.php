@@ -156,6 +156,7 @@ $versionPayload = [
     'build_number' => (string)$build,
     'release_date' => date('Y-m-d H:i:s'),
     'apk_url' => 'https://erp.arksoftsolutions.com/download/apk',
+    'windows_url' => 'https://erp.arksoftsolutions.com/download/windows',
     'web_url' => 'https://erp.arksoftsolutions.com/vendify-pos/',
     'release_notes' => "Vendify POS Release v{$semver}",
 ];

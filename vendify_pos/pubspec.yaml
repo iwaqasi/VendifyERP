@@ -48,4 +48,4 @@ msix_config:
   capabilities: internetClient
 
   certificate_path: certificates/vendifyPOS.pfx
-  certificate_password: ''
+  certificate_password: 'AnNajamVerse9@1234##'

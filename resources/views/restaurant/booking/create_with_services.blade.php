@@ -182,7 +182,17 @@
             <input type="number" name="services[INDEX][quantity]" class="form-control service-qty" value="1" min="0.01" step="0.01" required>
         </td>
         <td>
-            <input type="text" name="services[INDEX][unit_price]" class="form-control service-price input_number" value="0.00" required readonly>
+            <div class="input-group">
+                <span class="input-group-addon" style="padding: 2px 6px; font-size: 11px;">KD</span>
+                <input type="text" name="services[INDEX][unit_price]" class="form-control service-price input_number" value="0.00" required>
+            </div>
+            <div class="service-quick-denoms" style="margin-top: 3px;">
+                <button type="button" class="btn btn-default btn-xs line-denom-btn" data-amt="1.000" style="padding: 1px 4px; font-size: 10px;">+1</button>
+                <button type="button" class="btn btn-default btn-xs line-denom-btn" data-amt="2.000" style="padding: 1px 4px; font-size: 10px;">+2</button>
+                <button type="button" class="btn btn-default btn-xs line-denom-btn" data-amt="5.000" style="padding: 1px 4px; font-size: 10px;">+5</button>
+                <button type="button" class="btn btn-default btn-xs line-denom-btn" data-amt="10.000" style="padding: 1px 4px; font-size: 10px;">+10</button>
+                <button type="button" class="btn btn-default btn-xs line-denom-btn" data-amt="20.000" style="padding: 1px 4px; font-size: 10px;">+20</button>
+            </div>
         </td>
         <td>
             <span class="line-total">0.00</span>

@@ -120,6 +120,7 @@ if (is_dir($projectRoot . '/public/vendify-cms')) {
 // Single root files to include
 $singleFiles = [
     'public/version.json',
+    'public/js/booking-services.js',
 ];
 foreach ($singleFiles as $sFile) {
     $absSFile = $projectRoot . '/' . str_replace('/', DIRECTORY_SEPARATOR, $sFile);

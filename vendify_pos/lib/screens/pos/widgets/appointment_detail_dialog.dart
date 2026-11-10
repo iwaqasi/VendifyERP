@@ -10,6 +10,8 @@ class AppointmentCompleteResult {
   final int? staffId;
   final String? staffName;
   final int? appointmentId;
+  final double tipAmount;
+  final bool autoOpenPayment;
 
   AppointmentCompleteResult({
     required this.services,
@@ -18,6 +20,8 @@ class AppointmentCompleteResult {
     this.staffId,
     this.staffName,
     this.appointmentId,
+    this.tipAmount = 0.0,
+    this.autoOpenPayment = true,
   });
 }
 
@@ -89,6 +93,8 @@ class _AppointmentDetailDialogState extends State<AppointmentDetailDialog> {
   bool _isUpdating = false;
   bool _isSavingServices = false;
   late List<_ServiceItem> _services;
+  double _tipAmount = 0.0;
+  int? _editingPriceIndex;
 
   Map<String, dynamic> get _appt => widget.appointment;
 
@@ -312,6 +318,167 @@ class _AppointmentDetailDialogState extends State<AppointmentDetailDialog> {
         ),
       ),
     );
+  }
+
+  Widget _quickAddPriceChip(int index, double amount, String label) {
+    return InkWell(
+      onTap: () => _setServicePriceQuick(index, amount),
+      borderRadius: BorderRadius.circular(6),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
+        decoration: BoxDecoration(
+          color: const Color(0xFFE91E63).withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(color: const Color(0xFFE91E63).withValues(alpha: 0.35)),
+        ),
+        child: Text(
+          label,
+          style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFFE91E63)),
+        ),
+      ),
+    );
+  }
+
+  Widget _customPriceChip(int index) {
+    return InkWell(
+      onTap: () => _editServicePrice(index),
+      borderRadius: BorderRadius.circular(6),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
+        decoration: BoxDecoration(
+          color: AppTheme.primary.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(color: AppTheme.primary.withValues(alpha: 0.35)),
+        ),
+        child: const Text(
+          'Custom Price',
+          style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppTheme.primary),
+        ),
+      ),
+    );
+  }
+
+  Widget _resetPriceChip(int index) {
+    return InkWell(
+      onTap: () => _resetServicePrice(index),
+      borderRadius: BorderRadius.circular(6),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
+        decoration: BoxDecoration(
+          color: AppTheme.textMuted.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(color: AppTheme.textMuted.withValues(alpha: 0.35)),
+        ),
+        child: const Text(
+          'Reset (KD 0)',
+          style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppTheme.textMuted),
+        ),
+      ),
+    );
+  }
+
+  void _setServicePriceQuick(int index, double amount) async {
+    final item = _services[index];
+    setState(() {
+      if (item.price <= 0) {
+        item.price = amount;
+      } else {
+        item.price = (item.price + amount);
+      }
+    });
+    await _syncServicesToBackend();
+  }
+
+  void _resetServicePrice(int index) async {
+    final item = _services[index];
+    setState(() {
+      item.price = 0.0;
+    });
+    await _syncServicesToBackend();
+  }
+
+  Widget _tipChip(double amount, String label) {
+    final isSelected = (_tipAmount == amount);
+    return InkWell(
+      onTap: () => setState(() => _tipAmount = amount),
+      borderRadius: BorderRadius.circular(6),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+        decoration: BoxDecoration(
+          color: isSelected ? const Color(0xFFFF9800) : const Color(0xFFFF9800).withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(color: const Color(0xFFFF9800).withValues(alpha: 0.4)),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.bold,
+            color: isSelected ? Colors.white : const Color(0xFFFF9800),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _customTipChip() {
+    final isCustom = _tipAmount > 0 && !const [0.5, 1.0, 2.0, 3.0, 5.0].contains(_tipAmount);
+    return InkWell(
+      onTap: _showCustomTipDialog,
+      borderRadius: BorderRadius.circular(6),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+        decoration: BoxDecoration(
+          color: isCustom ? const Color(0xFFFF9800) : const Color(0xFFFF9800).withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(color: const Color(0xFFFF9800).withValues(alpha: 0.4)),
+        ),
+        child: Text(
+          isCustom ? 'Custom (${_tipAmount.toStringAsFixed(3)})' : 'Custom Tip',
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.bold,
+            color: isCustom ? Colors.white : const Color(0xFFFF9800),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showCustomTipDialog() async {
+    final ctrl = TextEditingController(text: _tipAmount > 0 ? _tipAmount.toStringAsFixed(3) : '');
+    final result = await showDialog<double>(
+      context: context,
+      builder: (dlgCtx) => AlertDialog(
+        backgroundColor: AppTheme.surface,
+        title: Text('Tip for ${_appt['staff'] ?? 'Stylist'}', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: AppTheme.textPrimary)),
+        content: TextField(
+          controller: ctrl,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          autofocus: true,
+          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFFFF9800)),
+          decoration: const InputDecoration(
+            prefixText: 'KD ',
+            hintText: '0.000',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dlgCtx, null), child: const Text('Cancel')),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFFF9800)),
+            onPressed: () {
+              final val = double.tryParse(ctrl.text.trim()) ?? 0.0;
+              Navigator.pop(dlgCtx, val);
+            },
+            child: const Text('Confirm', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+    if (result != null) {
+      setState(() => _tipAmount = result);
+    }
   }
 
   Future<double?> _showPriceDialog({
@@ -691,6 +858,22 @@ class _AppointmentDetailDialogState extends State<AppointmentDetailDialog> {
   }
 
   void _completeAndAddToCart() {
+    // 1. Validation: check if any service still has price <= 0
+    final zeroPriceIdx = _services.indexWhere((s) => s.price <= 0);
+    if (zeroPriceIdx >= 0) {
+      final zeroSvc = _services[zeroPriceIdx];
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Please set a price for "${zeroSvc.name}" before completing payment.'),
+          backgroundColor: AppTheme.warning,
+          duration: const Duration(seconds: 3),
+        ),
+      );
+      setState(() => _editingPriceIndex = zeroPriceIdx);
+      _editServicePrice(zeroPriceIdx);
+      return;
+    }
+
     // Build cart items for all current services (including add-ons)
     final cartItems = _services.map((s) => CartItemData(
       name: s.name,
@@ -705,7 +888,7 @@ class _AppointmentDetailDialogState extends State<AppointmentDetailDialog> {
     int? staffId = _appt['staff_id'];
     String? staffName = (_appt['staff'] ?? '').toString();
 
-    // Return result with staff & appointment attribution
+    // Return result with staff, tip & appointment attribution
     widget.onComplete(AppointmentCompleteResult(
       services: cartItems,
       customerName: _appt['customerName'] ?? 'Walk-in Customer',
@@ -713,6 +896,8 @@ class _AppointmentDetailDialogState extends State<AppointmentDetailDialog> {
       staffId: staffId,
       staffName: staffName.isNotEmpty ? staffName : null,
       appointmentId: _appt['id'],
+      tipAmount: _tipAmount,
+      autoOpenPayment: true,
     ));
 
     Navigator.of(context).pop();
@@ -841,62 +1026,181 @@ class _AppointmentDetailDialogState extends State<AppointmentDetailDialog> {
           // Service Items List
           ...List.generate(_services.length, (i) {
             final s = _services[i];
+            final isZeroPrice = s.price <= 0;
+            final isEditing = (_editingPriceIndex == i) || isZeroPrice;
+
             return Container(
               margin: const EdgeInsets.only(bottom: 6),
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-              decoration: BoxDecoration(color: AppTheme.background, borderRadius: BorderRadius.circular(8)),
-              child: Row(
+              decoration: BoxDecoration(
+                color: isZeroPrice ? const Color(0xFFE91E63).withValues(alpha: 0.05) : AppTheme.background,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: isZeroPrice ? const Color(0xFFE91E63).withValues(alpha: 0.4) : AppTheme.border,
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Container(
-                    width: 28, height: 28,
-                    decoration: BoxDecoration(color: const Color(0xFFE91E63).withValues(alpha: 0.1), borderRadius: BorderRadius.circular(6)),
-                    child: const Icon(Icons.spa, size: 14, color: Color(0xFFE91E63)),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(s.name, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: AppTheme.textPrimary)),
-                        Text('${s.durationMinutes} min', style: const TextStyle(fontSize: 11, color: AppTheme.textMuted)),
-                      ],
-                    ),
-                  ),
-                  InkWell(
-                    onTap: canModifyServices ? () => _editServicePrice(i) : null,
-                    borderRadius: BorderRadius.circular(6),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: AppTheme.primary.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(6),
-                        border: Border.all(color: AppTheme.primary.withValues(alpha: 0.2)),
+                  Row(
+                    children: [
+                      Container(
+                        width: 28, height: 28,
+                        decoration: BoxDecoration(color: const Color(0xFFE91E63).withValues(alpha: 0.1), borderRadius: BorderRadius.circular(6)),
+                        child: const Icon(Icons.spa, size: 14, color: Color(0xFFE91E63)),
                       ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text('KD ${s.price.toStringAsFixed(3)}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.primary)),
-                          if (canModifyServices) ...[
-                            const SizedBox(width: 4),
-                            const Icon(Icons.edit, size: 12, color: AppTheme.primary),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(s.name, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: AppTheme.textPrimary)),
+                            Text('${s.durationMinutes} min', style: const TextStyle(fontSize: 11, color: AppTheme.textMuted)),
                           ],
+                        ),
+                      ),
+                      InkWell(
+                        onTap: canModifyServices ? () {
+                          setState(() {
+                            _editingPriceIndex = (_editingPriceIndex == i) ? null : i;
+                          });
+                        } : null,
+                        borderRadius: BorderRadius.circular(6),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: isZeroPrice ? const Color(0xFFE91E63).withValues(alpha: 0.15) : AppTheme.primary.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(color: isZeroPrice ? const Color(0xFFE91E63).withValues(alpha: 0.5) : AppTheme.primary.withValues(alpha: 0.2)),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                s.price > 0 ? 'KD ${s.price.toStringAsFixed(3)}' : 'Set Price (KD 0.000)',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                  color: isZeroPrice ? const Color(0xFFE91E63) : AppTheme.primary,
+                                ),
+                              ),
+                              if (canModifyServices) ...[
+                                const SizedBox(width: 4),
+                                Icon(Icons.edit, size: 12, color: isZeroPrice ? const Color(0xFFE91E63) : AppTheme.primary),
+                              ],
+                            ],
+                          ),
+                        ),
+                      ),
+                      if (canModifyServices && _services.length > 1) ...[
+                        const SizedBox(width: 6),
+                        IconButton(
+                          icon: const Icon(Icons.close, size: 16, color: AppTheme.textMuted),
+                          splashRadius: 16,
+                          onPressed: () => _removeService(i),
+                          tooltip: 'Remove add-on',
+                        ),
+                      ],
+                    ],
+                  ),
+
+                  // Quick Denomination Buttons (for 0 price or when editing)
+                  if (canModifyServices && isEditing) ...[
+                    const SizedBox(height: 8),
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFE91E63).withValues(alpha: 0.05),
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(color: const Color(0xFFE91E63).withValues(alpha: 0.2)),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              const Icon(Icons.touch_app, size: 12, color: Color(0xFFE91E63)),
+                              const SizedBox(width: 4),
+                              Text(
+                                isZeroPrice ? 'Price is 0.000 — Tap quick denomination to set price:' : 'Quick price adjust:',
+                                style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFFE91E63)),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 6),
+                          Wrap(
+                            spacing: 6,
+                            runSpacing: 4,
+                            children: [
+                              _quickAddPriceChip(i, 1.0, '+1 KD'),
+                              _quickAddPriceChip(i, 2.0, '+2 KD'),
+                              _quickAddPriceChip(i, 5.0, '+5 KD'),
+                              _quickAddPriceChip(i, 10.0, '+10 KD'),
+                              _quickAddPriceChip(i, 15.0, '+15 KD'),
+                              _quickAddPriceChip(i, 20.0, '+20 KD'),
+                              _quickAddPriceChip(i, 25.0, '+25 KD'),
+                              _quickAddPriceChip(i, 50.0, '+50 KD'),
+                              _resetPriceChip(i),
+                              _customPriceChip(i),
+                            ],
+                          ),
                         ],
                       ),
-                    ),
-                  ),
-                  if (canModifyServices && _services.length > 1) ...[
-                    const SizedBox(width: 6),
-                    IconButton(
-                      icon: const Icon(Icons.close, size: 16, color: AppTheme.textMuted),
-                      splashRadius: 16,
-                      onPressed: () => _removeService(i),
-                      tooltip: 'Remove add-on',
                     ),
                   ],
                 ],
               ),
             );
           }),
+
+          // Staff Tipping Section (Scenario 2)
+          const SizedBox(height: 10),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: const Color(0xFFFF9800).withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: const Color(0xFFFF9800).withValues(alpha: 0.3)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Icon(Icons.favorite, size: 16, color: Color(0xFFFF9800)),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Stylist Tip (${_appt['staff'] ?? 'Assigned Stylist'}):',
+                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.textPrimary),
+                    ),
+                    const Spacer(),
+                    Text(
+                      _tipAmount > 0 ? 'KD ${_tipAmount.toStringAsFixed(3)}' : 'No Tip',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.bold,
+                        color: _tipAmount > 0 ? const Color(0xFFFF9800) : AppTheme.textMuted,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 4,
+                  children: [
+                    _tipChip(0.0, 'None'),
+                    _tipChip(0.5, '+0.500 KD'),
+                    _tipChip(1.0, '+1.000 KD'),
+                    _tipChip(2.0, '+2.000 KD'),
+                    _tipChip(3.0, '+3.000 KD'),
+                    _tipChip(5.0, '+5.000 KD'),
+                    _customTipChip(),
+                  ],
+                ),
+              ],
+            ),
+          ),
 
           // Total Price Summary Box
           const SizedBox(height: 8),
@@ -911,9 +1215,11 @@ class _AppointmentDetailDialogState extends State<AppointmentDetailDialog> {
               children: [
                 const Icon(Icons.receipt_long, size: 18, color: AppTheme.primary),
                 const SizedBox(width: 8),
-                Text('Total ($_totalDuration min)', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: AppTheme.textSecondary)),
+                Text('Total ($_totalDuration min)${_tipAmount > 0 ? " + Tip KD ${_tipAmount.toStringAsFixed(3)}" : ""}',
+                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: AppTheme.textSecondary)),
                 const Spacer(),
-                Text('KD ${_totalPrice.toStringAsFixed(3)}', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppTheme.primary)),
+                Text('KD ${(_totalPrice + _tipAmount).toStringAsFixed(3)}',
+                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppTheme.primary)),
               ],
             ),
           ),

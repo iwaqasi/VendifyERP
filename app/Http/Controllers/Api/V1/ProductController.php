@@ -381,7 +381,7 @@ class ProductController extends BaseApiController
             'tax_name' => $product->product_tax->name ?? null,
             'tax_rate' => $product->product_tax->amount ?? 0,
             'description' => $product->product_description,
-            'is_service_product' => $product->type === 'service',
+            'is_service_product' => ($product->type === 'service' || (int)$product->enable_stock === 0),
             'has_variations' => $product->product_variations()->count() > 1,
             'modifiers' => $product->modifier_sets()->get(['id', 'name']),
             'variation_id' => $variation ? $variation->id : null,

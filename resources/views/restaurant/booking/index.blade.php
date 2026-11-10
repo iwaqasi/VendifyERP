@@ -36,6 +36,9 @@
                         <a href="{{ route('download.apk') }}" class="btn btn-xs btn-success" target="_blank" title="Download Android POS APK">
                             <i class="fa fa-android"></i> POS APK (v{{ config('author.app_version') }})
                         </a>
+                        <a href="{{ route('download.windows') }}" class="btn btn-xs btn-info" target="_blank" title="Download Windows Desktop POS (MSIX)">
+                            <i class="fa fa-windows"></i> Windows POS (MSIX)
+                        </a>
                     </div>
                 </div>
                 <!-- /.box-header -->
@@ -70,7 +73,8 @@
                             <button type="button" class="btn btn-primary" id="add_new_booking_btn"><i class="fa fa-plus"></i> @lang('restaurant.add_booking')</button>
                             <a href="{{ action([\App\Http\Controllers\StaffScheduleController::class, 'index']) }}" class="btn btn-info"><i class="fa fa-clock-o"></i> Staff Schedules</a>
                             <a href="{{ action([\App\Http\Controllers\Restaurant\BookingController::class, 'staffTipsReport']) }}" class="btn btn-warning"><i class="fa fa-heart"></i> Staff Tips & Daily Summary</a>
-                            <a href="{{ route('download.apk') }}" target="_blank" class="btn btn-success"><i class="fa fa-android"></i> Download POS App (v{{ config('author.app_version') }})</a>
+                            <a href="{{ route('download.apk') }}" target="_blank" class="btn btn-success"><i class="fa fa-android"></i> Android POS (v{{ config('author.app_version') }})</a>
+                            <a href="{{ route('download.windows') }}" target="_blank" class="btn btn-info"><i class="fa fa-windows"></i> Windows POS (MSIX)</a>
                         </div>
                     </div>
                     <div class="row">

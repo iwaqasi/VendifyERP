@@ -115,6 +115,30 @@ Route::middleware(['setData'])->group(function () {
     Route::get('/downloads/vendify-pos.apk', function() {
         return redirect()->route('download.apk');
     });
+
+    // Public POS Windows Download (for Merchants)
+    Route::get('/download/windows', function() {
+        $paths = [
+            public_path('downloads/vendify-pos-windows.msix'),
+            public_path('downloads/vendify-pos-windows.zip'),
+            public_path('downloads/vendify-pos.exe'),
+        ];
+        foreach ($paths as $path) {
+            if (file_exists($path)) {
+                $version = config('author.app_version', '1.1.0');
+                $ext = pathinfo($path, PATHINFO_EXTENSION);
+                return response()->download($path, "vendify-pos-v{$version}.{$ext}", [
+                    'Content-Type' => 'application/octet-stream',
+                    'Cache-Control' => 'no-cache, must-revalidate',
+                ]);
+            }
+        }
+        abort(404, 'Vendify POS Windows package not found.');
+    })->name('download.windows');
+
+    Route::get('/downloads/vendify-pos-windows.msix', function() {
+        return redirect()->route('download.windows');
+    });
 });
 
 //Routes for authenticated users only

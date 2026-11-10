@@ -31,6 +31,16 @@ class ApiConfig {
     return 'https://erp.arksoftsolutions.com/download/apk';
   }
 
+  static String get downloadWindowsUrl {
+    if (kIsWeb) {
+      final origin = Uri.base.origin;
+      if (origin.isNotEmpty && !origin.startsWith('file://')) {
+        return '$origin/download/windows';
+      }
+    }
+    return 'https://erp.arksoftsolutions.com/download/windows';
+  }
+
   static const Duration connectTimeout = Duration(seconds: 15);
   static const Duration receiveTimeout = Duration(seconds: 15);
 

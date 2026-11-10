@@ -75,6 +75,8 @@ vendify_cms/*.iml
 *.zip
 *.apk
 public/downloads/*.apk
+*.msix
+public/downloads/*.msix
 vendify-deploy.zip
 public/*.zip
 vendify_pos/certificates/

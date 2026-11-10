@@ -25,7 +25,10 @@
                     <h3 class="box-title"><i class="fa fa-filter"></i> Filter Tips</h3>
                     <div class="box-tools pull-right">
                         <a href="{{ route('download.apk') }}" target="_blank" class="btn btn-success btn-sm" style="margin-right: 5px;">
-                            <i class="fa fa-android"></i> Download POS APK (v{{ config('author.app_version') }})
+                            <i class="fa fa-android"></i> POS APK (v{{ config('author.app_version') }})
+                        </a>
+                        <a href="{{ route('download.windows') }}" target="_blank" class="btn btn-info btn-sm" style="margin-right: 5px;">
+                            <i class="fa fa-windows"></i> Windows POS (MSIX)
                         </a>
                         <a href="{{ action([\App\Http\Controllers\Restaurant\BookingController::class, 'index']) }}" class="btn btn-default btn-sm">
                             <i class="fa fa-arrow-left"></i> Back to Bookings

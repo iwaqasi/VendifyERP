@@ -25,6 +25,7 @@ class PaymentScreen extends ConsumerStatefulWidget {
   final int? staffId;
   final String? staffName;
   final int? appointmentId;
+  final double initialTip;
 
   const PaymentScreen({
     super.key,
@@ -41,6 +42,7 @@ class PaymentScreen extends ConsumerStatefulWidget {
     this.staffId,
     this.staffName,
     this.appointmentId,
+    this.initialTip = 0.0,
   });
 
   @override
@@ -111,6 +113,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
   @override
   void initState() {
     super.initState();
+    _tipAmount = widget.initialTip;
     _tipStaffId = widget.staffId;
     _tipStaffName = widget.staffName;
     _amountController.text = _payableTotal.toStringAsFixed(3);

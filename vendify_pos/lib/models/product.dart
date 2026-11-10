@@ -130,7 +130,12 @@ class Product {
       taxRate: _parseDouble(json['tax_rate']),
       description: json['description']?.toString(),
       isServiceProduct:
-          json['is_service_product'] == true || json['is_service_product'] == 1,
+          json['is_service_product'] == true ||
+          json['is_service_product'] == 1 ||
+          json['type'] == 'service' ||
+          json['enable_stock'] == false ||
+          json['enable_stock'] == 0 ||
+          json['enable_stock'] == '0',
       hasVariations:
           json['has_variations'] == true || json['has_variations'] == 1,
       serviceTime: json['service_time'] != null

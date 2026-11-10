@@ -13,10 +13,7 @@ import 'package:vendify_pos/screens/pos/widgets/product_card.dart';
 import 'package:vendify_pos/screens/pos/widgets/inventory_dialog.dart';
 import 'package:vendify_pos/screens/pos/widgets/cart_panel.dart';
 import 'package:vendify_pos/screens/pos/payment_screen.dart';
-import 'package:vendify_pos/screens/pos/widgets/sync_center_dialog.dart';
 import 'package:vendify_pos/screens/pos/widgets/sync_status_badge.dart';
-import 'package:vendify_pos/screens/pos/widgets/diagnostics_dialog.dart';
-import 'package:vendify_pos/screens/pos/widgets/audit_trail_dialog.dart';
 import 'package:provider/provider.dart' as p;
 import 'package:vendify_pos/providers/locale_provider.dart';
 import 'package:vendify_pos/screens/login/pin_screen.dart';
@@ -160,9 +157,9 @@ class _SaloonPosScreenState extends ConsumerState<SaloonPosScreen> {
         final receiptPrefix = posSettings['pos_receipt_prefix'] ?? 'INV-POS-';
         prefs.setString('pos_receipt_prefix', receiptPrefix);
         
-        // Filter services (products that are services)
+        // Filter services (products that are services or have stock disabled)
         _services = _products.where((p) => 
-          p.type == 'service' || p.isServiceProduct
+          p.type == 'service' || p.isServiceProduct || !p.enableStock
         ).toList();
         
         _isLoading = false;
@@ -501,12 +498,12 @@ class _SaloonPosScreenState extends ConsumerState<SaloonPosScreen> {
       appointment: appointment,
       posService: _posService,
       staff: _staff,
-      availableServices: _products.map((p) => {
+      availableServices: (_services.isNotEmpty ? _services : _products).map((p) => {
         'id': p.id,
         'name': p.name,
         'price': p.sellPriceIncTax,
-        'duration': 30,
-        'is_flexible': p.sellPriceIncTax <= 0,
+        'duration': p.serviceTime ?? 30,
+        'is_flexible': p.sellPriceIncTax <= 0 || p.isFlexiblePrice,
       }).toList(),
       onComplete: (result) {
         // Add completed services to the cart (skip duplicates)
@@ -572,6 +569,15 @@ class _SaloonPosScreenState extends ConsumerState<SaloonPosScreen> {
             ),
           );
         }
+
+        // Auto open payment screen if requested (e.g. from Complete & Pay)
+        if (result.autoOpenPayment && _cartItems.isNotEmpty) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) {
+              _proceedToPayment(initialTip: result.tipAmount);
+            }
+          });
+        }
       },
       onStatusChanged: _loadAppointments,
     );
@@ -605,7 +611,7 @@ class _SaloonPosScreenState extends ConsumerState<SaloonPosScreen> {
     _proceedToPayment();
   }
 
-  void _proceedToPayment() {
+  void _proceedToPayment({double initialTip = 0.0}) {
     Navigator.push(context,
         MaterialPageRoute(builder: (_) => PaymentScreen(
           cartItems: _cartItems,
@@ -621,6 +627,7 @@ class _SaloonPosScreenState extends ConsumerState<SaloonPosScreen> {
           staffId: _selectedStaffId,
           staffName: _selectedStaffName != 'Any Available' ? _selectedStaffName : null,
           appointmentId: _activeAppointmentId,
+          initialTip: initialTip,
         )));
   }
 
@@ -824,24 +831,6 @@ class _SaloonPosScreenState extends ConsumerState<SaloonPosScreen> {
             onPressed: _openInventory,
             tooltip: 'Inventory',
           ),
-          const SizedBox(width: 8),
-          const SyncStatusBadge(),
-          const SizedBox(width: 6),
-          IconButton(
-            icon: const Icon(Icons.sync_alt, color: AppTheme.textSecondary, size: 20),
-            onPressed: () => SyncCenterDialog.show(context),
-            tooltip: 'Sync Center',
-          ),
-          IconButton(
-            icon: const Icon(Icons.bug_report_outlined, color: AppTheme.textSecondary, size: 20),
-            onPressed: () => DiagnosticsDialog.show(context),
-            tooltip: 'Diagnostics & Logs',
-          ),
-          IconButton(
-            icon: const Icon(Icons.shield_outlined, color: AppTheme.textSecondary, size: 20),
-            onPressed: () => AuditTrailDialog.show(context, _posService),
-            tooltip: 'Audit Trail & Activity Logs',
-          ),
           const SizedBox(width: 4),
           p.Consumer<LocaleProvider>(
             builder: (ctx, loc, _) => InkWell(
@@ -867,11 +856,11 @@ class _SaloonPosScreenState extends ConsumerState<SaloonPosScreen> {
           ),
           const SizedBox(width: 4),
           IconButton(
-            icon: const Icon(Icons.settings_outlined, color: AppTheme.textSecondary, size: 20),
+            icon: const Icon(Icons.settings_outlined, color: AppTheme.textSecondary, size: 22),
             onPressed: () {
               Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsScreen()));
             },
-            tooltip: 'Settings & Download APK',
+            tooltip: 'Settings & Manager Tools',
           ),
           const SizedBox(width: 4),
           IconButton(

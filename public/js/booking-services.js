@@ -43,16 +43,27 @@ $(document).ready(function() {
                 row.find('.service-price').val(price.toFixed(2));
                 row.find('.is_flexible_input').val(product.is_flexible_price);
                 
-                // Make price editable only if flexible
-                if (product.is_flexible_price == 1) {
-                    row.find('.service-price').removeAttr('readonly').removeClass('readonly');
+                // Make price editable if flexible or price is 0
+                if (product.is_flexible_price == 1 || price <= 0) {
+                    row.find('.service-price').removeAttr('readonly').removeClass('readonly').focus();
                 } else {
-                    row.find('.service-price').attr('readonly', true).addClass('readonly');
+                    row.find('.service-price').removeAttr('readonly').removeClass('readonly');
                 }
                 
                 updateLineTotal(row);
             }
         }
+    });
+
+    // Quick denomination buttons for service lines
+    $(document).on('click', '.line-denom-btn', function(e) {
+        e.preventDefault();
+        var row = $(this).closest('tr');
+        var amt = parseFloat($(this).data('amt')) || 0;
+        var $priceInput = row.find('.service-price');
+        var current = parseFloat($priceInput.val()) || 0;
+        $priceInput.val((current + amt).toFixed(3));
+        updateLineTotal(row);
     });
     
     // Quantity or price change - update line total
