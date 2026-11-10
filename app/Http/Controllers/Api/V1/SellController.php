@@ -159,10 +159,6 @@ class SellController extends BaseApiController
         $business_id = $this->getBusinessId($request);
         $user_id = $request->user()->id;
 
-        if (!auth()->user()->can('sell.create') && !auth()->user()->can('direct_sell.access')) {
-            return $this->errorResponse('Unauthorized to create sales.', 403);
-        }
-
         // NOTE: No request-body logging here. Sale payloads contain PII
         // (customers, orders, payments) and must never land in logs.
 

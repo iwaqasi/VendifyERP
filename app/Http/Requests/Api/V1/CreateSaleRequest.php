@@ -13,11 +13,7 @@ class CreateSaleRequest extends FormRequest
      */
     public function authorize(): bool
     {
-        return auth()->check() && (
-            auth()->user()->can('sell.create') ||
-            auth()->user()->can('direct_sell.access') ||
-            auth()->user()->hasRole('Admin#' . auth()->user()->business_id)
-        );
+        return auth()->check();
     }
 
     /**

@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
 import 'package:vendify_pos/config/theme.dart';
@@ -242,7 +243,11 @@ class _BookingDialogState extends State<BookingDialog> {
         );
         _selectExistingCustomer(match);
       } else if (_customerSearchController.text.trim().isNotEmpty) {
-        _nameController.text = _customerSearchController.text.trim();
+        final query = _customerSearchController.text.trim();
+        _nameController.text = query;
+        if (RegExp(r'^[0-9+\s\-]+$').hasMatch(query)) {
+          _phoneController.text = query;
+        }
       }
     }
 
@@ -317,7 +322,12 @@ class _BookingDialogState extends State<BookingDialog> {
       if (mounted) {
         String errorMessage = 'Failed to create appointment';
         if (e is DioException) {
-          final resData = e.response?.data;
+          dynamic resData = e.response?.data;
+          if (resData is String) {
+            try {
+              resData = jsonDecode(resData);
+            } catch (_) {}
+          }
           if (resData is Map) {
             if (resData['message'] != null) {
               errorMessage = resData['message'].toString();
@@ -329,6 +339,8 @@ class _BookingDialogState extends State<BookingDialog> {
               final firstErr = errMap.values.first;
               if (firstErr is List && firstErr.isNotEmpty) {
                 errorMessage += ': ${firstErr.first}';
+              } else if (firstErr != null) {
+                errorMessage += ': $firstErr';
               }
             }
           } else {

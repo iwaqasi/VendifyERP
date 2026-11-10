@@ -25,12 +25,22 @@ class ContactController extends BaseApiController
 
         // Search
         if ($search = $request->input('search')) {
-            $query->where(function ($q) use ($search) {
-                $q->where('name', 'LIKE', "%{$search}%")
-                  ->orWhere('contact_id', 'LIKE', "%{$search}%")
-                  ->orWhere('mobile', 'LIKE', "%{$search}%")
-                  ->orWhere('email', 'LIKE', "%{$search}%")
-                  ->orWhere('supplier_business_name', 'LIKE', "%{$search}%");
+            $cleanPhone = preg_replace('/[^0-9]/', '', $search);
+            $localPhone = preg_replace('/^(965|966|971|973|974|968)/', '', $cleanPhone);
+
+            $query->where(function ($q) use ($search, $cleanPhone, $localPhone) {
+                $q->where('contacts.name', 'LIKE', "%{$search}%")
+                  ->orWhere('contacts.contact_id', 'LIKE', "%{$search}%")
+                  ->orWhere('contacts.mobile', 'LIKE', "%{$search}%")
+                  ->orWhere('contacts.email', 'LIKE', "%{$search}%")
+                  ->orWhere('contacts.supplier_business_name', 'LIKE', "%{$search}%");
+
+                if (!empty($cleanPhone) && strlen($cleanPhone) >= 4) {
+                    $q->orWhere('contacts.mobile', 'LIKE', "%{$cleanPhone}%");
+                }
+                if (!empty($localPhone) && strlen($localPhone) >= 4 && $localPhone !== $cleanPhone) {
+                    $q->orWhere('contacts.mobile', 'LIKE', "%{$localPhone}%");
+                }
             });
         }
 

@@ -33,31 +33,70 @@ class SaloonController extends BaseApiController
      */
     public function storeAppointment(CreateAppointmentRequest $request): JsonResponse
     {
-        $request->validate([
-            'customer_name' => 'required|string',
-            'service_name' => 'required|string',
-            'appointment_start' => 'required|date',
-            'service_duration_minutes' => 'integer|min:1',
-        ]);
-
         $business_id = $this->getBusinessId($request);
         
         $startTime = \Carbon\Carbon::parse($request->input('appointment_start'));
-        $duration = $request->input('service_duration_minutes', 30);
+        $duration = (int) $request->input('service_duration_minutes', 30);
+        if ($duration < 1) $duration = 30;
         $endTime = $startTime->copy()->addMinutes($duration);
 
         $contactId = $request->input('contact_id');
         $staffId = $request->input('staff_id');
         $locationId = $request->input('location_id');
         $userId = $request->user()->id;
+        $customerName = $request->input('customer_name');
+        $customerPhone = $request->input('customer_phone');
+
+        // Ensure location_id is always resolved
+        if (empty($locationId)) {
+            $firstLoc = DB::table('business_locations')
+                ->where('business_id', $business_id)
+                ->where('is_active', 1)
+                ->first();
+            $locationId = $firstLoc ? $firstLoc->id : 1;
+        }
+
+        // Try to match existing customer by phone or name if contact_id not provided
+        if (empty($contactId)) {
+            $phone = $customerPhone;
+            $name = $customerName;
+            $existing = null;
+            if (!empty($phone)) {
+                $existing = DB::table('contacts')
+                    ->where('business_id', $business_id)
+                    ->where('mobile', $phone)
+                    ->first();
+            }
+            if (!$existing && !empty($name)) {
+                // If user typed digits/phone into name field
+                $cleanDigits = preg_replace('/[^0-9]/', '', $name);
+                if (strlen($cleanDigits) >= 7) {
+                    $existing = DB::table('contacts')
+                        ->where('business_id', $business_id)
+                        ->where('mobile', 'LIKE', "%{$cleanDigits}%")
+                        ->first();
+                }
+                if (!$existing) {
+                    $existing = DB::table('contacts')
+                        ->where('business_id', $business_id)
+                        ->where('name', $name)
+                        ->first();
+                }
+            }
+            if ($existing) {
+                $contactId = $existing->id;
+                $customerName = $existing->name;
+                $customerPhone = $existing->mobile ?? $customerPhone;
+            }
+        }
 
         $id = DB::table('pos_appointments')->insertGetId([
             'business_id' => $business_id,
             'contact_id' => $contactId,
             'staff_id' => $staffId,
             'location_id' => $locationId,
-            'customer_name' => $request->input('customer_name'),
-            'customer_phone' => $request->input('customer_phone'),
+            'customer_name' => $customerName,
+            'customer_phone' => $customerPhone,
             'customer_email' => $request->input('customer_email'),
             'service_name' => $request->input('service_name'),
             'service_price' => $request->input('service_price', 0),
@@ -87,6 +126,12 @@ class SaloonController extends BaseApiController
                 ->where('business_id', $business_id)
                 ->where('name', 'LIKE', '%Walk-In%')
                 ->first();
+            if (!$walkIn) {
+                $walkIn = DB::table('contacts')
+                    ->where('business_id', $business_id)
+                    ->where('type', 'customer')
+                    ->first();
+            }
             $bookingContactId = $walkIn ? $walkIn->id : null;
         }
 
