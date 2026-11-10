@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:vendify_pos/config/api_config.dart';
 import 'package:vendify_pos/config/theme.dart';
 import 'package:vendify_pos/config/navigation.dart';
 import 'package:vendify_pos/providers/api_provider.dart';
@@ -293,6 +295,43 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     'Use PIN instead',
                     style: TextStyle(color: AppTheme.textMuted, fontSize: 13),
                   ),
+                ),
+
+                const SizedBox(height: 12),
+
+                // Version & Download APK for Android devices
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Text(
+                      'v${ApiConfig.appVersion}',
+                      style: TextStyle(color: AppTheme.textMuted, fontSize: 12),
+                    ),
+                    const Text(' • ', style: TextStyle(color: AppTheme.textMuted)),
+                    InkWell(
+                      onTap: () async {
+                        final uri = Uri.parse(ApiConfig.downloadApkUrl);
+                        if (await canLaunchUrl(uri)) {
+                          await launchUrl(uri, mode: LaunchMode.externalApplication);
+                        }
+                      },
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.android, size: 14, color: AppTheme.primary),
+                          SizedBox(width: 4),
+                          Text(
+                            'Download Android APK',
+                            style: TextStyle(
+                              color: AppTheme.primary,
+                              fontSize: 12,
+                              decoration: TextDecoration.underline,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),

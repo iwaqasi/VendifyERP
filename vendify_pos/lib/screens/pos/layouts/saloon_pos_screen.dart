@@ -25,6 +25,7 @@ import 'package:vendify_pos/screens/pos/daily_register_screen.dart';
 import 'package:vendify_pos/screens/pos/widgets/booking_dialog.dart';
 import 'package:vendify_pos/screens/pos/widgets/appointment_detail_dialog.dart';
 import 'package:vendify_pos/screens/pos/widgets/staff_daily_summary_dialog.dart';
+import 'package:vendify_pos/screens/settings/settings_screen.dart';
 
 class SaloonPosScreen extends ConsumerStatefulWidget {
   final String businessType;
@@ -863,6 +864,14 @@ class _SaloonPosScreenState extends ConsumerState<SaloonPosScreen> {
                 ),
               ),
             ),
+          ),
+          const SizedBox(width: 4),
+          IconButton(
+            icon: const Icon(Icons.settings_outlined, color: AppTheme.textSecondary, size: 20),
+            onPressed: () {
+              Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsScreen()));
+            },
+            tooltip: 'Settings & Download APK',
           ),
           const SizedBox(width: 4),
           IconButton(

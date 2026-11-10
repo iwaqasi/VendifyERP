@@ -11,8 +11,16 @@ error_reporting(E_ALL);
 ini_set('memory_limit', '512M');
 set_time_limit(300);
 
-$version = $argv[1] ?? '1.0.1';
 $projectRoot = dirname(__DIR__);
+$defaultVersion = '1.1.0';
+$authorPath = $projectRoot . '/config/author.php';
+if (file_exists($authorPath)) {
+    $authorSrc = file_get_contents($authorPath);
+    if (preg_match("/'app_version'\s*=>\s*'([^']+)'/", $authorSrc, $vMatches)) {
+        $defaultVersion = $vMatches[1];
+    }
+}
+$version = $argv[1] ?? $defaultVersion;
 chdir($projectRoot);
 
 echo "\033[0;36m================================================================\033[0m\n";
@@ -78,8 +86,8 @@ function scanAndAddDir(ZipArchive $zip, $absDir, $projectRoot, &$fileCount, &$ma
     foreach ($iterator as $item) {
         if ($item->isFile()) {
             $abs = $item->getPathname();
-            // Exclude git, build caches, and test files
-            if (preg_match('#(\.git|vendify-pos\.zip|\.dart_tool|node_modules|tests)#', $abs)) {
+            // Exclude git, build caches, and test files (also avoid duplicate apk in vendify-pos root)
+            if (preg_match('#(\.git|vendify-pos\.zip|\.dart_tool|node_modules|tests|vendify-pos[/\\\\]app-release\.apk)#', $abs)) {
                 continue;
             }
             $rel = substr($abs, strlen($projectRoot) + 1);
@@ -96,15 +104,29 @@ $directories = [
     'routes',
     'Modules/Superadmin/Http/Controllers',
     'Modules/Superadmin/Routes',
+    'resources/views/layouts',
     'resources/views/restaurant/booking',
     'resources/views/business/partials',
     'resources/views/myfatoorah',
     'resources/views/install',
+    'public/downloads',
     'public/vendify-pos',
 ];
 
 if (is_dir($projectRoot . '/public/vendify-cms')) {
     $directories[] = 'public/vendify-cms';
+}
+
+// Single root files to include
+$singleFiles = [
+    'public/version.json',
+];
+foreach ($singleFiles as $sFile) {
+    $absSFile = $projectRoot . '/' . str_replace('/', DIRECTORY_SEPARATOR, $sFile);
+    if (file_exists($absSFile)) {
+        addFileToZip($zip, $absSFile, $sFile, $fileCount, $manifestList);
+        echo "  \033[0;32m✓\033[0m Added file: {$sFile}\n";
+    }
 }
 
 foreach ($directories as $dir) {

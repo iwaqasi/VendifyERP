@@ -303,6 +303,12 @@ foreach ($filesToCopy as $relPath) {
         continue;
     }
 
+    // If source and destination are the same file (already extracted in place by unzip)
+    if (realpath($src) && realpath($dst) && realpath($src) === realpath($dst)) {
+        $copiedCount++;
+        continue;
+    }
+
     if ($dryRun) {
         out("[DRY-RUN] Would update: {$relPath}", 'info');
         $copiedCount++;

@@ -32,6 +32,11 @@
             <div class="box box-primary">
                 <div class="box-header with-border">
                     <h3 class="box-title">@lang('restaurant.todays_bookings')</h3>
+                    <div class="box-tools pull-right">
+                        <a href="{{ route('download.apk') }}" class="btn btn-xs btn-success" target="_blank" title="Download Android POS APK">
+                            <i class="fa fa-android"></i> POS APK (v{{ config('author.app_version') }})
+                        </a>
+                    </div>
                 </div>
                 <!-- /.box-header -->
                 <div class="box-body">
@@ -65,6 +70,7 @@
                             <button type="button" class="btn btn-primary" id="add_new_booking_btn"><i class="fa fa-plus"></i> @lang('restaurant.add_booking')</button>
                             <a href="{{ action([\App\Http\Controllers\StaffScheduleController::class, 'index']) }}" class="btn btn-info"><i class="fa fa-clock-o"></i> Staff Schedules</a>
                             <a href="{{ action([\App\Http\Controllers\Restaurant\BookingController::class, 'staffTipsReport']) }}" class="btn btn-warning"><i class="fa fa-heart"></i> Staff Tips & Daily Summary</a>
+                            <a href="{{ route('download.apk') }}" target="_blank" class="btn btn-success"><i class="fa fa-android"></i> Download POS App (v{{ config('author.app_version') }})</a>
                         </div>
                     </div>
                     <div class="row">

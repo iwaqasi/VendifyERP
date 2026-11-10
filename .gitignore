@@ -73,6 +73,8 @@ vendify_cms/*.iml
 
 # Deployment archives and certificates
 *.zip
+*.apk
+public/downloads/*.apk
 vendify-deploy.zip
 public/*.zip
 vendify_pos/certificates/

@@ -18,6 +18,19 @@ class ApiConfig {
     return 'http://10.0.2.2:8000/api';
   }
 
+  static const String appVersion = '1.1.0';
+  static const String appBuild = '2';
+
+  static String get downloadApkUrl {
+    if (kIsWeb) {
+      final origin = Uri.base.origin;
+      if (origin.isNotEmpty && !origin.startsWith('file://')) {
+        return '$origin/download/apk';
+      }
+    }
+    return 'https://erp.arksoftsolutions.com/download/apk';
+  }
+
   static const Duration connectTimeout = Duration(seconds: 15);
   static const Duration receiveTimeout = Duration(seconds: 15);
 

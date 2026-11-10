@@ -1,7 +1,7 @@
 name: vendify_pos
 description: VendifyPOS - Cross-platform Point of Sale for VendifyERP
 publish_to: 'none'
-version: 1.0.0+1
+version: 1.1.0+2
 
 environment:
   sdk: ^3.13.0
@@ -25,6 +25,7 @@ dependencies:
   pdf: ^3.11.2
   flutter_localizations:
     sdk: flutter
+  url_launcher: ^6.3.3
 
 dev_dependencies:
   flutter_test:
@@ -42,7 +43,7 @@ msix_config:
   display_name: Vendify POS
   publisher_display_name: ARK Soft Solutions
   identity_name: ARKSoftSolutions.VendifyPOS
-  msix_version: 1.0.0.0
+  msix_version: 1.1.0.0
   logo_path: assets/images/vendify_logo.png
   capabilities: internetClient
 

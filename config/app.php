@@ -16,6 +16,8 @@ return [
 
     'name' => env('APP_NAME', 'VendifyERP'),
 
+    'version' => env('APP_VERSION', '1.1.0'),
+
     /*
     |--------------------------------------------------------------------------
     | Application Environment

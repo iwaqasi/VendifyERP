@@ -2,6 +2,7 @@ import 'package:vendify_pos/providers/api_provider.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:vendify_pos/config/theme.dart';
 import 'package:vendify_pos/config/api_config.dart';
 import 'package:vendify_pos/providers/theme_provider.dart';
@@ -314,8 +315,42 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           // About
           _buildSectionHeader('About', isDark),
           const SizedBox(height: 8),
-          _buildInfoTile('Version', '1.0.0', isDark),
-          _buildInfoTile('Build', '2026.08', isDark),
+          _buildInfoTile('Version', 'v${ApiConfig.appVersion}', isDark),
+          _buildInfoTile('Build Number', ApiConfig.appBuild, isDark),
+          const SizedBox(height: 8),
+          Container(
+            width: double.infinity,
+            margin: const EdgeInsets.only(bottom: 8),
+            decoration: BoxDecoration(
+              color: isDark ? AppTheme.surface : AppTheme.lightSurface,
+              borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+              border: Border.all(color: isDark ? AppTheme.border : AppTheme.lightBorder),
+            ),
+            child: ListTile(
+              leading: const Icon(Icons.android, color: Colors.green),
+              title: Text(
+                'Download Android App (APK)',
+                style: TextStyle(
+                  color: isDark ? AppTheme.textPrimary : AppTheme.lightTextPrimary,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              subtitle: Text(
+                'Direct install for mobile & handheld terminals (v${ApiConfig.appVersion})',
+                style: TextStyle(
+                  color: isDark ? AppTheme.textSecondary : AppTheme.lightTextSecondary,
+                  fontSize: 12,
+                ),
+              ),
+              trailing: const Icon(Icons.download, color: Colors.green),
+              onTap: () async {
+                final uri = Uri.parse(ApiConfig.downloadApkUrl);
+                if (await canLaunchUrl(uri)) {
+                  await launchUrl(uri, mode: LaunchMode.externalApplication);
+                }
+              },
+            ),
+          ),
         ],
       ),
     );

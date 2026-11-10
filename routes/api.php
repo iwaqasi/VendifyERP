@@ -39,7 +39,7 @@ Route::get('/v1/auth/login-by-pin', function () {
 Route::get('/v1/health', function () {
     return response()->json([
         'status' => 'ok',
-        'version' => config('app.version', '7.0'),
+        'version' => config('app.version', config('author.app_version', '1.1.0')),
         'app_name' => config('app.name', 'VendifyERP'),
         'timestamp' => now()->toDateTimeString(),
     ]);

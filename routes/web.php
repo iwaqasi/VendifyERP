@@ -93,6 +93,28 @@ Route::middleware(['setData'])->group(function () {
         ->name('invoice_payment');
     Route::post('/confirm-payment/{id}', [SellPosController::class, 'confirmPayment'])
         ->name('confirm_payment');
+
+    // Public POS APK Download (for Merchants)
+    Route::get('/download/apk', function() {
+        $paths = [
+            public_path('downloads/vendify-pos.apk'),
+            public_path('vendify-pos/app-release.apk'),
+        ];
+        foreach ($paths as $path) {
+            if (file_exists($path)) {
+                $version = config('author.app_version', '1.1.0');
+                return response()->download($path, "vendify-pos-v{$version}.apk", [
+                    'Content-Type' => 'application/vnd.android.package-archive',
+                    'Cache-Control' => 'no-cache, must-revalidate',
+                ]);
+            }
+        }
+        abort(404, 'Vendify POS APK release not found.');
+    })->name('download.apk');
+
+    Route::get('/downloads/vendify-pos.apk', function() {
+        return redirect()->route('download.apk');
+    });
 });
 
 //Routes for authenticated users only

@@ -78,3 +78,4 @@ class StaffTip extends Model
         return $this->belongsTo(\App\Business::class, 'business_id');
     }
 }
+

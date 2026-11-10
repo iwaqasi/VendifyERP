@@ -164,6 +164,24 @@
                         </a>
                     @endcan
                 @endif
+
+                <a href="{{ route('download.apk') }}"
+                    target="_blank"
+                    title="Download Android POS App (v{{ config('author.app_version') }})"
+                    class="tw-inline-flex tw-transition-all tw-duration-200 tw-gap-1.5 tw-bg-emerald-600 hover:tw-bg-emerald-700 tw-py-1.5 tw-px-2.5 tw-rounded-lg tw-items-center tw-justify-center tw-text-sm tw-font-medium tw-ring-1 tw-ring-white/10 tw-text-white hover:tw-text-white">
+                    <svg aria-hidden="true" class="tw-size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="1.75" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                        <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+                        <path d="M4 10l0 6" />
+                        <path d="M20 10l0 6" />
+                        <path d="M7 9h10v8a1 1 0 0 1 -1 1h-8a1 1 0 0 1 -1 -1v-8a5 5 0 0 1 10 0" />
+                        <path d="M8 3l1 2" />
+                        <path d="M16 3l-1 2" />
+                        <path d="M9 18l0 3" />
+                        <path d="M15 18l0 3" />
+                    </svg>
+                    <span class="tw-hidden lg:tw-inline">Download APK</span>
+                    <span class="tw-text-xs tw-bg-emerald-800/80 tw-px-1.5 tw-py-0.5 tw-rounded">v{{ config('author.app_version') }}</span>
+                </a>
                 @if (Module::has('Repair'))
                     @includeIf('repair::layouts.partials.header')
                 @endif
@@ -230,6 +248,23 @@
                                     <path d="M6.168 18.849a4 4 0 0 1 3.832 -2.849h4a4 4 0 0 1 3.834 2.855" />
                                 </svg>
                                 @lang('lang_v1.profile')
+                            </a>
+                        </li>
+                        <li>
+                            <a href="{{ route('download.apk') }}" target="_blank"
+                                class="tw-flex tw-items-center tw-gap-2 tw-px-3 tw-py-2 tw-text-sm tw-font-medium tw-text-emerald-700 tw-transition-all tw-duration-200 tw-rounded-lg hover:tw-text-emerald-900 hover:tw-bg-emerald-50"
+                                role="menuitem" tabindex="-1">
+                                <svg aria-hidden="true" class="tw-w-5 tw-h-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="1.75" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                                    <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+                                    <path d="M4 10l0 6" />
+                                    <path d="M20 10l0 6" />
+                                    <path d="M7 9h10v8a1 1 0 0 1 -1 1h-8a1 1 0 0 1 -1 -1v-8a5 5 0 0 1 10 0" />
+                                    <path d="M8 3l1 2" />
+                                    <path d="M16 3l-1 2" />
+                                    <path d="M9 18l0 3" />
+                                    <path d="M15 18l0 3" />
+                                </svg>
+                                Download Android POS
                             </a>
                         </li>
                         <li>
