@@ -1,4 +1,4 @@
-﻿# =============================================================================
+# =============================================================================
 # VendifyERP — Automated SiteGround Deployment Script (PowerShell)
 # =============================================================================
 # Usage:
@@ -146,3 +146,4 @@ Write-Host "  Publish Workflow Complete! 🚀" -ForegroundColor Green
 Write-Host "  URL: https://erp.arksoftsolutions.com" -ForegroundColor White
 Write-Host "  POS: https://erp.arksoftsolutions.com/vendify-pos/" -ForegroundColor White
 Write-Host "================================================================" -ForegroundColor Cyan
+
