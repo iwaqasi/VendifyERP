@@ -408,8 +408,8 @@ class _AddCustomerDialogState extends ConsumerState<_AddCustomerDialog> {
   String _payTermType = 'days';
 
   Future<void> _saveCustomer() async {
-    if (!_formKey.currentState!.validate()) return;
-    _formKey.currentState!.save();
+    if (_formKey.currentState?.validate() != true) return;
+    _formKey.currentState?.save();
 
     setState(() {
       _isSaving = true;

@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
 import 'package:vendify_cms/config/theme.dart';
 import 'package:vendify_cms/services/api_service.dart';
 
@@ -14,7 +13,6 @@ class PostDetailScreen extends StatefulWidget {
 class _PostDetailScreenState extends State<PostDetailScreen> {
   final CmsApiService _api = CmsApiService();
   Map<String, dynamic>? _post;
-  List<dynamic> _relatedPosts = [];
   bool _isLoading = true;
 
   @override
@@ -28,7 +26,6 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
       final data = await _api.getPost(widget.slug);
       setState(() {
         _post = data['post'];
-        _relatedPosts = data['related_posts'] ?? [];
         _isLoading = false;
       });
     } catch (e) {

@@ -19,7 +19,19 @@ use Illuminate\Support\Facades\Route;
 // ============================================================
 
 Route::post('/v1/auth/login', [\App\Http\Controllers\Api\V1\AuthController::class, 'login']);
+Route::get('/v1/auth/login', function () {
+    return response()->json([
+        'success' => false,
+        'message' => 'The login endpoint accepts only HTTP POST requests with email and password.',
+    ], 405);
+});
 Route::post('/v1/auth/login-by-pin', [\App\Http\Controllers\Api\V1\AuthController::class, 'loginByPin']);
+Route::get('/v1/auth/login-by-pin', function () {
+    return response()->json([
+        'success' => false,
+        'message' => 'The PIN login endpoint accepts only HTTP POST requests with pin and business_id.',
+    ], 405);
+});
 
 // ============================================================
 // HEALTH CHECK (No authentication required)
@@ -92,6 +104,10 @@ Route::middleware('auth:api')->group(function () {
         Route::post('/v1/contacts/{id}/pay-credit', [\App\Http\Controllers\Api\V1\SellController::class, 'payCredit']);
         Route::get('/v1/reports/daily-sales', [\App\Http\Controllers\Api\V1\SellController::class, 'dailySummary']);
 
+        // --- GCC Online Payments (KNET / Mada / Apple Pay / STC Pay) ---
+        Route::post('/v1/payments/online/initiate', [\App\Http\Controllers\Api\V1\OnlinePaymentController::class, 'initiate']);
+        Route::get('/v1/payments/online/status/{transaction_id}', [\App\Http\Controllers\Api\V1\OnlinePaymentController::class, 'status']);
+
         // --- Stock ---
         Route::get('/v1/stock', [\App\Http\Controllers\Api\V1\StockController::class, 'index']);
         Route::get('/v1/stock/product/{product_id}', [\App\Http\Controllers\Api\V1\StockController::class, 'productStock']);
@@ -115,10 +131,15 @@ Route::middleware('auth:api')->group(function () {
         Route::get('/v1/saloon/appointments', [\App\Http\Controllers\Api\V1\SaloonController::class, 'appointments']);
         Route::post('/v1/saloon/appointments', [\App\Http\Controllers\Api\V1\SaloonController::class, 'storeAppointment']);
         Route::put('/v1/saloon/appointments/{id}/status', [\App\Http\Controllers\Api\V1\SaloonController::class, 'updateAppointmentStatus']);
+        Route::put('/v1/saloon/appointments/{id}/services', [\App\Http\Controllers\Api\V1\SaloonController::class, 'updateAppointmentServices']);
         Route::get('/v1/saloon/staff', [\App\Http\Controllers\Api\V1\SaloonController::class, 'staff']);
         Route::post('/v1/saloon/staff', [\App\Http\Controllers\Api\V1\SaloonController::class, 'storeStaff']);
         Route::post('/v1/saloon/service/start', [\App\Http\Controllers\Api\V1\SaloonController::class, 'startService']);
         Route::post('/v1/saloon/service/complete', [\App\Http\Controllers\Api\V1\SaloonController::class, 'completeService']);
+        Route::get('/v1/saloon/tips', [\App\Http\Controllers\Api\V1\SaloonController::class, 'tips']);
+        Route::post('/v1/saloon/tips', [\App\Http\Controllers\Api\V1\SaloonController::class, 'storeTip']);
+        Route::post('/v1/saloon/tips/payout', [\App\Http\Controllers\Api\V1\SaloonController::class, 'payoutTips']);
+        Route::get('/v1/saloon/staff-daily-summary', [\App\Http\Controllers\Api\V1\SaloonController::class, 'staffDailySummary']);
 
         // --- Repair ---
         Route::get('/v1/repairs', [\App\Http\Controllers\Api\V1\RepairController::class, 'index']);
@@ -133,6 +154,16 @@ Route::middleware('auth:api')->group(function () {
         Route::post('/v1/restaurant/orders', [\App\Http\Controllers\Api\V1\RestaurantController::class, 'storeOrder']);
         Route::put('/v1/restaurant/orders/{id}/status', [\App\Http\Controllers\Api\V1\RestaurantController::class, 'updateOrderStatus']);
         Route::post('/v1/restaurant/kot/send', [\App\Http\Controllers\Api\V1\RestaurantController::class, 'sendToKot']);
+        Route::get('/v1/restaurant/kds/orders', [\App\Http\Controllers\Api\V1\RestaurantController::class, 'kdsOrders']);
+        Route::put('/v1/restaurant/kds/items/{id}/status', [\App\Http\Controllers\Api\V1\RestaurantController::class, 'updateKdsItemStatus']);
+        Route::put('/v1/restaurant/kds/orders/{id}/serve', [\App\Http\Controllers\Api\V1\RestaurantController::class, 'serveOrder']);
+
+        // --- Saloon Commissions & Services ---
+        Route::get('/v1/saloon/commissions', [\App\Http\Controllers\Api\V1\SaloonController::class, 'commissions']);
+
+        // --- Wholesale Pricing Tiers ---
+        Route::get('/v1/wholesale/price-groups', [\App\Http\Controllers\Api\V1\SettingsController::class, 'priceGroups']);
+        Route::get('/v1/wholesale/group-prices/{group_id}', [\App\Http\Controllers\Api\V1\SettingsController::class, 'groupPrices']);
 
         // --- Shifts / Daily Register ---
         Route::get('/v1/shifts/current', [\App\Http\Controllers\Api\V1\ShiftController::class, 'current']);
@@ -150,6 +181,9 @@ Route::middleware('auth:api')->group(function () {
     Route::post('/v1/locations/transfer', [\App\Http\Controllers\Api\V1\LocationController::class, 'createTransfer']);
     Route::get('/v1/locations/transfers', [\App\Http\Controllers\Api\V1\LocationController::class, 'transfers']);
     Route::get('/v1/locations/sales-report', [\App\Http\Controllers\Api\V1\LocationController::class, 'salesReport']);
+
+    // --- Audit & Compliance ---
+    Route::get('/v1/audit-logs', [\App\Http\Controllers\Api\V1\AuditLogController::class, 'index']);
 });
 
 // ============================================================

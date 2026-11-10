@@ -34,9 +34,10 @@ class DataController extends Controller
             if (! empty($location_id)) {
                 $transaction_id = $request->get('transaction_id', null);
                 if (! empty($transaction_id)) {
-                    $transaction = Transaction::find($transaction_id);
-                    $view_data = ['res_table_id' => $transaction->res_table_id,
-                        'res_waiter_id' => $transaction->res_waiter_id,
+                    $transaction = Transaction::where('business_id', $business_id)->find($transaction_id);
+                    $view_data = [
+                        'res_table_id' => $transaction ? $transaction->res_table_id : null,
+                        'res_waiter_id' => $transaction ? $transaction->res_waiter_id : null,
                     ];
                 } else {
                     $view_data = ['res_table_id' => null, 'res_waiter_id' => null];

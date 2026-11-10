@@ -170,8 +170,11 @@ class Business extends Model
     public function getBusinessAddressAttribute()
     {
         $location = $this->locations->first();
-        $address = $location->landmark.', '.$location->city.
-        ', '.$location->state.'<br>'.$location->country.', '.$location->zip_code;
+        if (!$location) {
+            return '';
+        }
+        $address = e($location->landmark).', '.e($location->city).
+        ', '.e($location->state).'<br>'.e($location->country).', '.e($location->zip_code);
 
         return $address;
     }

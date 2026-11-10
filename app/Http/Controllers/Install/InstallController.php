@@ -264,6 +264,17 @@ class InstallController extends Controller
 
     public function installAlternate(Request $request)
     {
+        // Guard: Prevent unauthenticated database wipe if application is already installed
+        try {
+            if (\Illuminate\Support\Facades\Schema::hasTable('users') && \App\User::count() > 0) {
+                abort(404, 'Application already installed.');
+            }
+        } catch (\Exception $e) {
+            if ($e instanceof \Symfony\Component\HttpKernel\Exception\HttpException) {
+                throw $e;
+            }
+        }
+
         try {
             $this->installSettings();
 
@@ -277,7 +288,11 @@ class InstallController extends Controller
             $this->runArtisanCommands();
 
             return redirect()->route('install.success');
-        } catch (Exception $e) {
+        } catch (\Exception $e) {
+            if ($e instanceof \Symfony\Component\HttpKernel\Exception\HttpException) {
+                throw $e;
+            }
+
             $this->deleteEnv();
 
             return redirect()->back()

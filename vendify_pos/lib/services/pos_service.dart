@@ -1,4 +1,6 @@
 import 'dart:convert';
+import 'dart:io';
+import 'package:dio/dio.dart';
 import 'package:vendify_pos/models/product.dart';
 import 'package:vendify_pos/models/contact.dart';
 import 'package:vendify_pos/models/cart_item.dart';
@@ -175,7 +177,10 @@ class PosService {
 
   Future<Map<String, dynamic>> getCustomerDetails(int contactId) async {
     final response = await _api.get('/v1/contacts/$contactId');
-    return response.data['data'] as Map<String, dynamic>;
+    if (response.data['data'] is Map) {
+      return Map<String, dynamic>.from(response.data['data']);
+    }
+    return {};
   }
 
   Future<Contact> createContact({
@@ -223,6 +228,11 @@ class PosService {
     String? saleNote,
     double rpRedeemAmount = 0.0,
     int rpRedeemed = 0,
+    double? tipAmount,
+    int? tipStaffId,
+    String? tipPaymentMethod,
+    int? appointmentId,
+    int? resWaiterId,
   }) async {
     // Build products array for API
     final products = cartItems.map((item) => {
@@ -258,10 +268,34 @@ class PosService {
         'local_transaction_id': localTxId,
         'rp_redeemed': rpRedeemed,
         'rp_redeemed_amount': rpRedeemAmount,
+        if (tipAmount != null && tipAmount > 0) 'tip_amount': tipAmount,
+        if (tipStaffId != null) 'tip_staff_id': tipStaffId,
+        if (tipPaymentMethod != null) 'tip_payment_method': tipPaymentMethod,
+        if (appointmentId != null) 'appointment_id': appointmentId,
+        if (resWaiterId != null) 'res_waiter_id': resWaiterId,
       });
 
       return response.data;
-    } catch (e) {
+    } on DioException catch (e) {
+      final isNetworkIssue = e.type == DioExceptionType.connectionTimeout ||
+          e.type == DioExceptionType.sendTimeout ||
+          e.type == DioExceptionType.receiveTimeout ||
+          e.type == DioExceptionType.connectionError ||
+          e.error is SocketException;
+
+      // If the server actively rejected the request (e.g. 401, 403, 422), do NOT queue offline as success
+      if (!isNetworkIssue && e.response != null) {
+        final data = e.response?.data;
+        final serverMessage = data is Map && data['message'] != null
+            ? data['message']
+            : (data is Map && data['msg'] != null ? data['msg'] : 'Transaction rejected by server');
+        return {
+          'success': false,
+          'message': serverMessage,
+          'status_code': e.response?.statusCode,
+        };
+      }
+
       // Offline fallback: store transaction in business-specific sync queue
       final storage = await _getStorage();
       if (storage != null) {
@@ -297,6 +331,44 @@ class PosService {
             'final_total': grandTotal,
           },
         };
+      }
+      rethrow;
+    } catch (e) {
+      // General network socket exception fallback
+      if (e is SocketException) {
+        final storage = await _getStorage();
+        if (storage != null) {
+          final localId = localTxId;
+          final offlineTx = OfflineTransaction(
+            localId: localId,
+            businessId: businessId,
+            locationId: locationId,
+            contactId: contactId,
+            userId: userId,
+            products: products,
+            payments: payments,
+            subtotal: subtotal,
+            tax: tax,
+            discount: discount,
+            grandTotal: grandTotal,
+            additionalNotes: additionalNotes,
+            saleNote: saleNote,
+            createdAt: DateTime.now(),
+          );
+
+          await storage.enqueueTransaction(offlineTx);
+
+          return {
+            'success': true,
+            'offline': true,
+            'local_id': localId,
+            'msg': 'Saved offline. Order will automatically sync once connected.',
+            'data': {
+              'invoice_no': localId,
+              'final_total': grandTotal,
+            },
+          };
+        }
       }
       rethrow;
     }
@@ -440,8 +512,8 @@ class PosService {
   Future<Map<String, dynamic>> getPosSettings() async {
     try {
       final response = await _api.get('/v1/pos-settings');
-      if (response.data['success'] == true) {
-        return response.data['data'];
+      if (response.data['success'] == true && response.data['data'] is Map) {
+        return Map<String, dynamic>.from(response.data['data']);
       }
     } catch (e) {
       // Return defaults if API fails
@@ -592,6 +664,73 @@ class PosService {
     await _api.put('/v1/saloon/appointments/$id/status', data: {
       'status': status,
     });
+  }
+
+  Future<Map<String, dynamic>> updateAppointmentServices(int id, Map<String, dynamic> data) async {
+    final response = await _api.put('/v1/saloon/appointments/$id/services', data: data);
+    return response.data;
+  }
+
+  Future<Map<String, dynamic>> getSaloonTips({String? startDate, String? endDate, int? staffId, String? status}) async {
+    try {
+      final params = <String, dynamic>{};
+      if (startDate != null) params['start_date'] = startDate;
+      if (endDate != null) params['end_date'] = endDate;
+      if (staffId != null) params['staff_id'] = staffId;
+      if (status != null) params['status'] = status;
+      final response = await _api.get('/v1/saloon/tips', queryParameters: params);
+      if (response.data['success'] == true && response.data['data'] is Map) {
+        return Map<String, dynamic>.from(response.data['data']);
+      }
+    } catch (_) {}
+    return {};
+  }
+
+  Future<Map<String, dynamic>> recordStaffTip({
+    required int staffId,
+    required double amount,
+    String? paymentMethod,
+    int? transactionId,
+    int? appointmentId,
+    int? locationId,
+    String? notes,
+  }) async {
+    final response = await _api.post('/v1/saloon/tips', data: {
+      'staff_id': staffId,
+      'amount': amount,
+      'payment_method': paymentMethod ?? 'cash',
+      if (transactionId != null) 'transaction_id': transactionId,
+      if (appointmentId != null) 'appointment_id': appointmentId,
+      if (locationId != null) 'location_id': locationId,
+      if (notes != null) 'notes': notes,
+    });
+    return response.data;
+  }
+
+  Future<Map<String, dynamic>> payoutStaffTips({
+    required int staffId,
+    List<int>? tipIds,
+    String? notes,
+  }) async {
+    final response = await _api.post('/v1/saloon/tips/payout', data: {
+      'staff_id': staffId,
+      if (tipIds != null) 'tip_ids': tipIds,
+      if (notes != null) 'notes': notes,
+    });
+    return response.data;
+  }
+
+  Future<Map<String, dynamic>> getStaffDailySummary({String? date, int? locationId}) async {
+    try {
+      final params = <String, dynamic>{};
+      if (date != null) params['date'] = date;
+      if (locationId != null) params['location_id'] = locationId;
+      final response = await _api.get('/v1/saloon/staff-daily-summary', queryParameters: params);
+      if (response.data['success'] == true && response.data['data'] is Map) {
+        return Map<String, dynamic>.from(response.data['data']);
+      }
+    } catch (_) {}
+    return {};
   }
 
   Future<List<Map<String, dynamic>>> getSaloonStaff() async {
@@ -759,7 +898,10 @@ class PosService {
     try {
       final response = await _api.get('/v1/locations');
       if (response.data['success'] == true) {
-        return List<Map<String, dynamic>>.from(response.data['data']['locations']);
+        final locs = response.data['data']?['locations'];
+        if (locs is List) {
+          return locs.whereType<Map>().map((l) => Map<String, dynamic>.from(l)).toList();
+        }
       }
     } catch (e) {
       // Intentional fallback
@@ -771,7 +913,10 @@ class PosService {
     try {
       final response = await _api.get('/v1/locations/stock-summary');
       if (response.data['success'] == true) {
-        return List<Map<String, dynamic>>.from(response.data['data']['locations']);
+        final locs = response.data['data']?['locations'];
+        if (locs is List) {
+          return locs.whereType<Map>().map((l) => Map<String, dynamic>.from(l)).toList();
+        }
       }
     } catch (e) {
       // Intentional fallback
@@ -852,6 +997,111 @@ class PosService {
     } catch (e) {
       // Intentional fallback
     }
+    return [];
+  }
+
+  /// Fetch audit logs from backend for compliance & store oversight
+  Future<Map<String, dynamic>> getAuditLogs({
+    int page = 1,
+    int perPage = 25,
+    String? event,
+    String? subjectType,
+    String? search,
+  }) async {
+    try {
+      final params = <String, dynamic>{
+        'page': page,
+        'per_page': perPage,
+      };
+      if (event != null && event.isNotEmpty) params['event'] = event;
+      if (subjectType != null && subjectType.isNotEmpty) params['subject_type'] = subjectType;
+      if (search != null && search.isNotEmpty) params['description'] = search;
+
+      final response = await _api.get('/v1/audit-logs', queryParameters: params);
+      if (response.data['success'] == true && response.data['data'] is List) {
+        return {
+          'items': List<Map<String, dynamic>>.from(
+            (response.data['data'] as List).map((x) => Map<String, dynamic>.from(x as Map)),
+          ),
+          'meta': response.data['meta'] is Map ? Map<String, dynamic>.from(response.data['meta']) : {},
+        };
+      }
+    } catch (_) {}
+    return {'items': <Map<String, dynamic>>[], 'meta': {}};
+  }
+
+  // ============ Restaurant KDS & KOT ============
+
+  Future<List<Map<String, dynamic>>> getKdsOrders({String station = 'all'}) async {
+    try {
+      final response = await _api.get('/v1/restaurant/kds/orders', queryParameters: {'station': station});
+      if (response.data['success'] == true && response.data['data']?['tickets'] is List) {
+        return List<Map<String, dynamic>>.from(
+          (response.data['data']['tickets'] as List).map((x) => Map<String, dynamic>.from(x as Map)),
+        );
+      }
+    } catch (_) {}
+    return [];
+  }
+
+  Future<bool> updateKdsItemStatus(int kotItemId, String status) async {
+    try {
+      final response = await _api.put('/v1/restaurant/kds/items/$kotItemId/status', data: {'status': status});
+      return response.data['success'] == true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<bool> serveRestaurantOrder(int orderId) async {
+    try {
+      final response = await _api.put('/v1/restaurant/kds/orders/$orderId/serve');
+      return response.data['success'] == true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  // ============ Saloon Staff Commissions ============
+
+  Future<Map<String, dynamic>> getStaffCommissions({String? startDate, String? endDate, int? staffId}) async {
+    try {
+      final params = <String, dynamic>{};
+      if (startDate != null) params['start_date'] = startDate;
+      if (endDate != null) params['end_date'] = endDate;
+      if (staffId != null) params['staff_id'] = staffId;
+
+      final response = await _api.get('/v1/saloon/commissions', queryParameters: params);
+      if (response.data['success'] == true && response.data['data'] is Map) {
+        return Map<String, dynamic>.from(response.data['data']);
+      }
+    } catch (_) {}
+    return {};
+  }
+
+  // ============ Wholesale Pricing Tiers ============
+
+  Future<List<Map<String, dynamic>>> getWholesalePriceGroups() async {
+    try {
+      final response = await _api.get('/v1/wholesale/price-groups');
+      if (response.data['success'] == true && response.data['data']?['price_groups'] is List) {
+        return List<Map<String, dynamic>>.from(
+          (response.data['data']['price_groups'] as List).map((x) => Map<String, dynamic>.from(x as Map)),
+        );
+      }
+    } catch (_) {}
+    return [];
+  }
+
+  Future<List<Map<String, dynamic>>> getWholesaleGroupPrices(int groupId) async {
+    try {
+      final response = await _api.get('/v1/wholesale/group-prices/$groupId');
+      if (response.data['success'] == true && response.data['data']?['group_prices'] is List) {
+        return List<Map<String, dynamic>>.from(
+          (response.data['data']['group_prices'] as List).map((x) => Map<String, dynamic>.from(x as Map)),
+        );
+      }
+    } catch (_) {}
     return [];
   }
 }

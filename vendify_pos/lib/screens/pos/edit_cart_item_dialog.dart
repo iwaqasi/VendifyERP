@@ -18,7 +18,7 @@ class EditCartItemDialog extends StatefulWidget {
 }
 
 class _EditCartItemDialogState extends State<EditCartItemDialog> {
-  late int _quantity;
+  late double _quantity;
   late TextEditingController _discountPercentController;
   late TextEditingController _discountAmountController;
   bool _updatingFromPercent = false;
@@ -31,10 +31,12 @@ class _EditCartItemDialogState extends State<EditCartItemDialog> {
       : _lineTotal * _discountPercent / 100;
   double get _total => _lineTotal - _discountAmount;
 
+  String _formatQuantity(double q) => q.truncateToDouble() == q ? q.toInt().toString() : q.toStringAsFixed(2);
+
   @override
   void initState() {
     super.initState();
-    _quantity = widget.item.quantity.toInt();
+    _quantity = widget.item.quantity;
     _discountPercentController = TextEditingController(
       text: widget.item.discountPercent > 0 ? widget.item.discountPercent.toStringAsFixed(3) : '0.000',
     );
@@ -184,13 +186,13 @@ class _EditCartItemDialogState extends State<EditCartItemDialog> {
                     // Minus button
                     _buildCircleButton(
                       icon: Icons.remove,
-                      onTap: _quantity > 1
-                          ? () => setState(() => _quantity--)
+                      onTap: _quantity > 0.05
+                          ? () => setState(() => _quantity = double.parse((_quantity - (_quantity <= 1 ? 0.1 : 1)).toStringAsFixed(2)))
                           : null,
                     ),
                     const SizedBox(width: 12),
                     Text(
-                      '$_quantity',
+                      _formatQuantity(_quantity),
                       style: const TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.bold,
@@ -201,7 +203,7 @@ class _EditCartItemDialogState extends State<EditCartItemDialog> {
                     // Plus button
                     _buildCircleButton(
                       icon: Icons.add,
-                      onTap: () => setState(() => _quantity++),
+                      onTap: () => setState(() => _quantity = double.parse((_quantity + (_quantity < 1 ? 0.1 : 1)).toStringAsFixed(2))),
                     ),
                   ],
                 ),

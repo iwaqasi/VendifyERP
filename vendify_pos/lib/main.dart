@@ -1,13 +1,16 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:provider/provider.dart';
 import 'package:vendify_pos/config/theme.dart';
 import 'package:vendify_pos/config/api_config.dart';
 import 'package:vendify_pos/providers/theme_provider.dart';
+import 'package:vendify_pos/providers/locale_provider.dart';
 import 'package:vendify_pos/screens/login/pin_screen.dart';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart' hide ChangeNotifierProvider;
 import 'package:vendify_pos/providers/api_provider.dart';
 import 'package:vendify_pos/services/logger_service.dart';
+import 'package:vendify_pos/config/navigation.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -33,8 +36,11 @@ void main() async {
   runApp(
     UncontrolledProviderScope(
       container: container,
-      child: ChangeNotifierProvider(
-        create: (_) => ThemeProvider(),
+      child: MultiProvider(
+        providers: [
+          ChangeNotifierProvider(create: (_) => ThemeProvider()),
+          ChangeNotifierProvider(create: (_) => LocaleProvider()),
+        ],
         child: const VendifyPosApp(),
       ),
     ),
@@ -47,10 +53,22 @@ class VendifyPosApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final themeProvider = context.watch<ThemeProvider>();
+    final localeProvider = context.watch<LocaleProvider>();
 
     return MaterialApp(
+      navigatorKey: navigatorKey,
       title: 'Vendify',
       debugShowCheckedModeBanner: false,
+      locale: localeProvider.locale,
+      supportedLocales: const [
+        Locale('en', 'US'),
+        Locale('ar', 'SA'),
+      ],
+      localizationsDelegates: const [
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
       theme: AppTheme.lightTheme,
       darkTheme: AppTheme.darkTheme,
       themeMode: themeProvider.flutterThemeMode,

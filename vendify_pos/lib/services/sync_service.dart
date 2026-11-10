@@ -1,3 +1,4 @@
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:vendify_pos/services/api_service.dart';
 import 'package:vendify_pos/services/offline_storage.dart';
 import 'package:vendify_pos/models/product.dart';
@@ -19,9 +20,18 @@ class SyncResult {
 
 class SyncService {
   final ApiService _api;
-  final OfflineStorage _storage;
+  final OfflineStorage _defaultStorage;
 
-  SyncService(this._api, this._storage);
+  SyncService(this._api, this._defaultStorage);
+
+  Future<OfflineStorage> getStorage() async {
+    final prefs = await SharedPreferences.getInstance();
+    final businessId = prefs.getInt('business_id');
+    if (businessId != null && businessId != _defaultStorage.businessId) {
+      return OfflineStorage(businessId: businessId);
+    }
+    return _defaultStorage;
+  }
 
   // ============ Sync Catalog Data ============
 
@@ -67,17 +77,19 @@ class SyncService {
     if (locationId != null) productParams['location_id'] = locationId;
     final contactParams = <String, dynamic>{'type': 'customer', 'per_page': 100};
 
+    final storage = await getStorage();
+
     // Each resource syncs independently: a failure in one must not
     // prevent the others (and their existing caches) from refreshing.
     try {
       final raw = await _fetchPaginated('/v1/products', queryParameters: productParams);
-      await _storage.saveProducts(
+      await storage.saveProducts(
           raw.map((p) => Product.fromJson(p as Map<String, dynamic>)).toList());
     } catch (_) {/* offline — existing cache remains safe */}
 
     try {
       final raw = await _fetchPaginated('/v1/contacts', queryParameters: contactParams);
-      await _storage.saveContacts(
+      await storage.saveContacts(
           raw.map((c) => Contact.fromJson(c as Map<String, dynamic>)).toList());
     } catch (_) {/* offline — existing cache remains safe */}
 
@@ -85,7 +97,7 @@ class SyncService {
       final response = await _api.get('/v1/categories');
       final data = response.data['data'];
       if (data is List) {
-        await _storage.saveCategories(
+        await storage.saveCategories(
             data.map((c) => Category.fromJson(c as Map<String, dynamic>)).toList());
       }
     } catch (_) {/* offline — existing cache remains safe */}
@@ -94,7 +106,7 @@ class SyncService {
       final response = await _api.get('/v1/tax-rates');
       final data = response.data['data'];
       if (data is List) {
-        await _storage.saveTaxRates(
+        await storage.saveTaxRates(
             data.map((t) => TaxRate.fromJson(t as Map<String, dynamic>)).toList());
       }
     } catch (_) {/* offline — existing cache remains safe */}
@@ -103,7 +115,8 @@ class SyncService {
   // ============ Sync Pending Transactions ============
 
   Future<SyncResult> syncPendingTransactions() async {
-    final queue = await _storage.getSyncQueue();
+    final storage = await getStorage();
+    final queue = await storage.getSyncQueue();
     final pending = queue.where((t) => t.status != 'synced').toList();
 
     int synced = 0;
@@ -112,7 +125,7 @@ class SyncService {
 
     for (final tx in pending) {
       // Mark syncing
-      await _storage.updateTransaction(tx.copyWith(status: 'syncing'));
+      await storage.updateTransaction(tx.copyWith(status: 'syncing'));
 
       try {
         final response = await _api.post('/v1/sells', data: {
@@ -129,11 +142,11 @@ class SyncService {
         });
 
         if (response.data['success'] == true) {
-          await _storage.removeTransaction(tx.localId);
+          await storage.removeTransaction(tx.localId);
           synced++;
         } else {
           final err = response.data['msg'] ?? 'Server error during sync';
-          await _storage.updateTransaction(tx.copyWith(
+          await storage.updateTransaction(tx.copyWith(
             status: 'failed',
             errorMessage: err.toString(),
             retryCount: tx.retryCount + 1,
@@ -142,7 +155,7 @@ class SyncService {
           errors.add('Tx ${tx.localId}: $err');
         }
       } catch (e) {
-        await _storage.updateTransaction(tx.copyWith(
+        await storage.updateTransaction(tx.copyWith(
           status: 'failed',
           errorMessage: e.toString(),
           retryCount: tx.retryCount + 1,

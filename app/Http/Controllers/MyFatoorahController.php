@@ -2,256 +2,283 @@
 
 namespace App\Http\Controllers;
 
+use App\Business;
+use App\Transaction;
+use App\Utils\TransactionUtil;
+use Exception;
+use Illuminate\Contracts\View\View;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
-use Illuminate\Contracts\View\View;
-use MyFatoorah\Library\MyFatoorah;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use MyFatoorah\Library\API\Payment\MyFatoorahPayment;
 use MyFatoorah\Library\API\Payment\MyFatoorahPaymentEmbedded;
 use MyFatoorah\Library\API\Payment\MyFatoorahPaymentStatus;
-use Exception;
+use MyFatoorah\Library\MyFatoorah;
 
-class MyFatoorahController extends Controller {
-
+class MyFatoorahController extends Controller
+{
     /**
      * @var array
      */
     public $mfConfig = [];
 
-//-----------------------------------------------------------------------------------------------------------------------------------------
+    /**
+     * @var TransactionUtil
+     */
+    protected $transactionUtil;
 
     /**
      * Initiate MyFatoorah Configuration
      */
-    public function __construct() {
+    public function __construct(TransactionUtil $transactionUtil)
+    {
+        $this->transactionUtil = $transactionUtil;
         $this->mfConfig = [
             'apiKey'      => config('myfatoorah.api_key'),
-            'isTest'      => config('myfatoorah.test_mode'),
-            'countryCode' => config('myfatoorah.country_iso'),
+            'isTest'      => (bool) config('myfatoorah.test_mode'),
+            'countryCode' => config('myfatoorah.country_iso', 'KWT'),
         ];
     }
 
-//-----------------------------------------------------------------------------------------------------------------------------------------
-
     /**
-     * Redirect to MyFatoorah Invoice URL
-     * Provide the index method with the order id and (payment method id or session id)
-     *
-     * @return Response
+     * Redirect to MyFatoorah Invoice URL or initiate checkout
      */
-    public function index() {
+    public function index(Request $request)
+    {
         try {
-            //For example: pmid=0 for MyFatoorah invoice or pmid=1 for Knet in test mode
-            $paymentId = request('pmid') ?: 0;
-            $sessionId = request('sid') ?: null;
+            $paymentMethodId = $request->input('pmid', 0);
+            $sessionId = $request->input('sid');
+            $transactionId = $request->input('transaction_id') ?: $request->input('package_id');
 
-            $package_id  = request('package_id');
-            $email  = request('email');
-            $amount = request('amount');
-            $currency = request('currency');
-            $coupon_code = request('coupon_code');
-            $name = request('name');
-            $user_id = request('user_id');
-            $business_id = request('business_id');
+            if (empty($transactionId)) {
+                throw new Exception('Transaction ID is required.');
+            }
 
-            $language = request('language');
+            $transaction = Transaction::with(['contact', 'business'])->find($transactionId);
+            if (!$transaction) {
+                throw new Exception('Transaction not found in system.');
+            }
 
-            $curlData = $this->getPayLoadData($package_id, $amount , $currency, $coupon_code, $email, $name, $user_id, $business_id, $language);
+            $business = $transaction->business;
 
-            $mfObj   = new MyFatoorahPayment($this->mfConfig);
-            $payment = $mfObj->getInvoiceURL($curlData, $paymentId, $package_id, $sessionId);
+            // Dynamically apply per-business gateway credentials with fallback to config/.env
+            $posSettings = !empty($business->pos_settings) ? json_decode($business->pos_settings, true) : [];
+            $apiKey = !empty($posSettings['myfatoorah_api_key']) ? $posSettings['myfatoorah_api_key'] : config('myfatoorah.api_key');
+            $isTest = isset($posSettings['myfatoorah_test_mode']) ? ((string) $posSettings['myfatoorah_test_mode'] === '1') : (bool) config('myfatoorah.test_mode');
+            $countryIso = !empty($posSettings['myfatoorah_country_iso']) ? $posSettings['myfatoorah_country_iso'] : config('myfatoorah.country_iso', 'KWT');
+
+            $this->mfConfig = [
+                'apiKey'      => $apiKey,
+                'isTest'      => $isTest,
+                'countryCode' => $countryIso,
+            ];
+
+            $customerName = optional($transaction->contact)->name ?: ($business->name ?? 'Customer');
+            $customerEmail = optional($transaction->contact)->email ?: ($business->email ?? 'info@vendify.local');
+            $amount = $request->input('amount') ?: $transaction->final_total;
+            $currency = $business->currency->code ?? config('myfatoorah.country_iso') === 'KWT' ? 'KWD' : 'SAR';
+            $language = $request->input('language', 'en');
+
+            $payload = [
+                'CustomerName'       => $customerName,
+                'InvoiceValue'       => (float) $amount,
+                'DisplayCurrencyIso' => $currency,
+                'CustomerEmail'      => $customerEmail,
+                'CallBackUrl'        => route('myfatoorah_callback'),
+                'ErrorUrl'           => route('myfatoorah_callback'),
+                'Language'           => $language,
+                'CustomerReference'  => (string) $transaction->id,
+                'UserDefinedField'   => json_encode([
+                    'business_id'    => $transaction->business_id,
+                    'transaction_id' => $transaction->id,
+                    'user_id'        => $request->input('user_id', $transaction->created_by),
+                ]),
+                'SourceInfo'         => 'Vendify ERP - MyFatoorah Gateway',
+            ];
+
+            $mfObj = new MyFatoorahPayment($this->mfConfig);
+            $payment = $mfObj->getInvoiceURL($payload, $paymentMethodId, $transaction->id, $sessionId);
+
+            if ($request->wantsJson() || $request->is('api/*')) {
+                return response()->json([
+                    'success'     => true,
+                    'invoice_id'  => $payment['invoiceId'] ?? null,
+                    'payment_url' => $payment['invoiceURL'] ?? null,
+                ]);
+            }
 
             return redirect($payment['invoiceURL']);
         } catch (Exception $ex) {
-            $exMessage = __('myfatoorah.' . $ex->getMessage());
-            return response()->json(['IsSuccess' => 'false', 'Message' => $exMessage]);
+            Log::error('MyFatoorah Initiation Failed: ' . $ex->getMessage());
+            if ($request->wantsJson() || $request->is('api/*')) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $ex->getMessage(),
+                ], 400);
+            }
+            return response()->json(['IsSuccess' => 'false', 'Message' => $ex->getMessage()], 400);
         }
     }
 
-//-----------------------------------------------------------------------------------------------------------------------------------------
-
     /**
-     * Example on how to map order data to MyFatoorah
-     * You can get the data using the order object in your system
-     * 
-     * @param int|string $orderId
-     * 
-     * @return array
+     * Get MyFatoorah Payment Information & Reconcile Transaction
      */
-    private function getPayLoadData($package_id = null, $amount, $currency, $coupon_code, $email, $name, $user_id, $business_id, $language) {
-        $callbackURL = route('myfatoorah_callback');
-
-        //You can get the data using the order object in your system
-        $order = $this->getTestOrderData($package_id);
-
-        return [
-            'CustomerName'       => $name,
-            'InvoiceValue'       => $amount,
-            'DisplayCurrencyIso' => $currency,
-            'CustomerEmail'      => $email,
-            'CallBackUrl'        => $callbackURL,
-            'ErrorUrl'           => $callbackURL,
-            'Language'           => $language,
-            'CustomerReference'  => $package_id,
-            'UserDefinedField'   => json_encode(['business_id' => $business_id, 'coupon_code' => $coupon_code, 'user_id' => $user_id]),
-            'SourceInfo'         => 'Laravel ' . app()::VERSION . ' - MyFatoorah Package ' . MYFATOORAH_LARAVEL_PACKAGE_VERSION
-        ];
-    }
-
-//-----------------------------------------------------------------------------------------------------------------------------------------
-
-    /**
-     * Get MyFatoorah Payment Information
-     * Provide the callback method with the paymentId
-     * 
-     * @return Response
-     */
-    public function callback() {
+    public function callback(Request $request)
+    {
         try {
-
-            $paymentId = request('paymentId');
-
-            $mfObj = new MyFatoorahPaymentStatus($this->mfConfig);
-            $data  = $mfObj->getPaymentStatus($paymentId, 'PaymentId');
-
-            return $data;
-            
-        } catch (Exception $ex) {
-            $exMessage = __('myfatoorah.' . $ex->getMessage());
-            $response  = ['success' => 'false', 'Message' => $exMessage];
-        }
-    }
-
-//-----------------------------------------------------------------------------------------------------------------------------------------
-
-    /**
-     * Example on how to Display the enabled gateways at your MyFatoorah account to be displayed on the checkout page
-     * Provide the checkout method with the order id to display its total amount and currency
-     * 
-     * @return View
-     */
-    public function checkout() {
-        try {
-            //You can get the data using the order object in your system
-            $orderId = request('oid') ?: 147;
-            $order   = $this->getTestOrderData($orderId);
-
-            //You can replace this variable with customer Id in your system
-            $customerId = request('customerId');
-
-            //You can use the user defined field if you want to save card
-            $userDefinedField = config('myfatoorah.save_card') && $customerId ? "CK-$customerId" : '';
-
-            //Get the enabled gateways at your MyFatoorah acount to be displayed on checkout page
-            $mfObj          = new MyFatoorahPaymentEmbedded($this->mfConfig);
-            $paymentMethods = $mfObj->getCheckoutGateways($order['total'], $order['currency'], config('myfatoorah.register_apple_pay'));
-
-            if (empty($paymentMethods['all'])) {
-                throw new Exception('noPaymentGateways');
+            $paymentId = $request->input('paymentId');
+            if (empty($paymentId)) {
+                throw new Exception('Payment ID is missing in callback.');
             }
 
-            //Generate MyFatoorah session for embedded payment
-            $mfSession = $mfObj->getEmbeddedSession($userDefinedField);
+            $mfObj = new MyFatoorahPaymentStatus($this->mfConfig);
+            $data = $mfObj->getPaymentStatus($paymentId, 'PaymentId');
 
-            //Get Environment url
-            $isTest = $this->mfConfig['isTest'];
-            $vcCode = $this->mfConfig['countryCode'];
+            $transactionId = $data->CustomerReference ?? null;
+            $invoiceStatus = $data->InvoiceStatus ?? '';
+            $paidAmount = $data->InvoiceValue ?? 0;
+            $paymentMethod = strtolower($data->PaymentMethod ?? 'knet');
 
-            $countries = MyFatoorah::getMFCountries();
-            $jsDomain  = ($isTest) ? $countries[$vcCode]['testPortal'] : $countries[$vcCode]['portal'];
+            // Reconcile if paid
+            if ($invoiceStatus === 'Paid' && !empty($transactionId)) {
+                $this->reconcileTransaction($transactionId, $paidAmount, $paymentMethod, $paymentId);
+            }
 
-            return view('myfatoorah.checkout', compact('mfSession', 'paymentMethods', 'jsDomain', 'userDefinedField'));
+            if ($request->wantsJson() || $request->is('api/*')) {
+                return response()->json([
+                    'success'        => $invoiceStatus === 'Paid',
+                    'status'         => $invoiceStatus,
+                    'transaction_id' => $transactionId,
+                    'amount'         => $paidAmount,
+                    'payment_id'     => $paymentId,
+                    'method'         => $paymentMethod,
+                ]);
+            }
+
+            return view('myfatoorah.status', compact('data', 'invoiceStatus', 'transactionId', 'paymentId'));
         } catch (Exception $ex) {
-            $exMessage = __('myfatoorah.' . $ex->getMessage());
-            return view('myfatoorah.error', compact('exMessage'));
+            Log::error('MyFatoorah Callback Error: ' . $ex->getMessage());
+            if ($request->wantsJson() || $request->is('api/*')) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $ex->getMessage(),
+                ], 400);
+            }
+            return response()->json(['success' => false, 'message' => $ex->getMessage()]);
         }
     }
 
-//-----------------------------------------------------------------------------------------------------------------------------------------
-
     /**
-     * Example on how the webhook is working when MyFatoorah try to notify your system about any transaction status update
+     * Instant Payment Notification (IPN) Webhook handler
      */
-    public function webhook(Request $request) {
+    public function webhook(Request $request)
+    {
         try {
-            //Validate webhook_secret_key
             $secretKey = config('myfatoorah.webhook_secret_key');
-            if (empty($secretKey)) {
-                return response(null, 404);
-            }
-
-            //Validate MyFatoorah-Signature
             $mfSignature = $request->header('MyFatoorah-Signature');
-            if (empty($mfSignature)) {
-                return response(null, 404);
+
+            if (empty($secretKey) || empty($mfSignature)) {
+                Log::warning('MyFatoorah webhook rejected: Missing secret key or signature header.');
+                return response('Unauthorized', 401);
             }
 
-            //Validate input
-            $body  = $request->getContent();
+            $body = $request->getContent();
             $input = json_decode($body, true);
+
             if (empty($input['Data']) || empty($input['EventType']) || $input['EventType'] != 1) {
-                return response(null, 404);
+                return response('Ignored event', 200);
             }
 
-            //Validate Signature
             if (!MyFatoorah::isSignatureValid($input['Data'], $secretKey, $mfSignature, $input['EventType'])) {
-                return response(null, 404);
+                Log::warning('MyFatoorah webhook rejected: Invalid signature.');
+                return response('Invalid Signature', 400);
             }
 
-            //Update Transaction status on your system
-            $result = $this->changeTransactionStatus($input['Data']);
+            $data = $input['Data'];
+            $transactionId = $data['CustomerReference'] ?? null;
+            $status = $data['TransactionStatus'] ?? '';
+            $paidAmount = $data['InvoiceValue'] ?? 0;
+            $paymentMethod = strtolower($data['PaymentMethod'] ?? 'knet');
+            $paymentId = $data['PaymentId'] ?? ($data['InvoiceId'] ?? 'webhook');
 
-            return response()->json($result);
+            if ($status === 'SUCCESS' && !empty($transactionId)) {
+                $this->reconcileTransaction($transactionId, $paidAmount, $paymentMethod, $paymentId);
+            }
+
+            return response()->json(['success' => true, 'status' => 'Reconciled']);
         } catch (Exception $ex) {
-            $exMessage = __('myfatoorah.' . $ex->getMessage());
-            return response()->json(['IsSuccess' => false, 'Message' => $exMessage]);
+            Log::error('MyFatoorah Webhook Failed: ' . $ex->getMessage());
+            return response()->json(['success' => false, 'message' => $ex->getMessage()], 400);
         }
     }
 
-//-----------------------------------------------------------------------------------------------------------------------------------------
-    private function changeTransactionStatus($inputData) {
-        //1. Check if orderId is valid on your system.
-        $orderId = $inputData['CustomerReference'];
+    /**
+     * Internal atomic reconciliation logic
+     */
+    protected function reconcileTransaction($transactionId, $paidAmount, $paymentMethod, $gatewayRef)
+    {
+        DB::beginTransaction();
+        try {
+            $transaction = Transaction::lockForUpdate()->find($transactionId);
+            if (!$transaction) {
+                DB::rollBack();
+                Log::warning("Reconciliation skipped: Transaction {$transactionId} not found.");
+                return;
+            }
 
-        //2. Get MyFatoorah invoice id
-        $invoiceId = $inputData['InvoiceId'];
+            // Check if already paid
+            if ($transaction->payment_status === 'paid') {
+                DB::commit();
+                return;
+            }
 
-        //3. Check order status at MyFatoorah side
-        if ($inputData['TransactionStatus'] == 'SUCCESS') {
-            $status = 'Paid';
-            $error  = '';
-        } else {
-            $mfObj = new MyFatoorahPaymentStatus($this->mfConfig);
-            $data  = $mfObj->getPaymentStatus($invoiceId, 'InvoiceId');
+            // Map method to Vendify supported GCC payment types
+            $methodMapped = 'card';
+            $pmLower = strtolower($paymentMethod);
+            if (str_contains($pmLower, 'knet')) {
+                $methodMapped = 'knet';
+            } elseif (str_contains($pmLower, 'mada')) {
+                $methodMapped = 'mada';
+            } elseif (str_contains($pmLower, 'apple')) {
+                $methodMapped = 'apple_pay';
+            } elseif (str_contains($pmLower, 'stc')) {
+                $methodMapped = 'stc_pay';
+            }
 
-            $status = $data->InvoiceStatus;
-            $error  = $data->InvoiceError;
+            $payments = [
+                [
+                    'amount'      => (float) $paidAmount,
+                    'method'      => $methodMapped,
+                    'paid_on'     => now()->toDateTimeString(),
+                    'created_by'  => $transaction->created_by,
+                    'note'        => "Automated reconciliation via MyFatoorah (Ref: {$gatewayRef})",
+                    'account_id'  => null,
+                ]
+            ];
+
+            $this->transactionUtil->createOrUpdatePaymentLines($transaction, $payments, $transaction->business_id, $transaction->created_by, false);
+            $this->transactionUtil->updatePaymentStatus($transaction->id, $transaction->final_total);
+
+            // Audit log
+            activity()
+                ->performedOn($transaction)
+                ->causedBy($transaction->created_by)
+                ->withProperties([
+                    'gateway'       => 'myfatoorah',
+                    'gateway_ref'   => $gatewayRef,
+                    'method'        => $methodMapped,
+                    'amount'        => $paidAmount,
+                ])
+                ->log("Online payment reconciled for Invoice #{$transaction->invoice_no}");
+
+            DB::commit();
+            Log::info("Transaction {$transactionId} successfully reconciled with {$methodMapped} for {$paidAmount}.");
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            Log::error("Failed to reconcile transaction {$transactionId}: " . $e->getMessage());
+            throw $e;
         }
-
-        $message = $this->getTestMessage($status, $error);
-
-        //4. Update order transaction status on your system
-        return ['IsSuccess' => true, 'Message' => $message, 'Data' => $inputData];
     }
-
-//-----------------------------------------------------------------------------------------------------------------------------------------
-    private function getTestOrderData($orderId) {
-        return [
-            'total'    => 15,
-            'currency' => 'KWD'
-        ];
-    }
-
-//-----------------------------------------------------------------------------------------------------------------------------------------
-    private function getTestMessage($status, $error) {
-        if ($status == 'Paid') {
-            return 'Invoice is paid.';
-        } else if ($status == 'Failed') {
-            return 'Invoice is not paid due to ' . $error;
-        } else if ($status == 'Expired') {
-            return $error;
-        }
-    }
-
-//-----------------------------------------------------------------------------------------------------------------------------------------
 }

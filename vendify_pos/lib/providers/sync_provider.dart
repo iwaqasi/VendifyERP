@@ -1,9 +1,9 @@
 import 'dart:async';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:vendify_pos/models/offline_transaction.dart';
 import 'package:vendify_pos/providers/api_provider.dart';
 import 'package:vendify_pos/services/sync_service.dart';
-import 'package:vendify_pos/services/offline_storage.dart';
 
 enum SyncStatus { idle, syncing, success, error }
 
@@ -11,6 +11,8 @@ class SyncState {
   final bool isOnline;
   final SyncStatus status;
   final int pendingCount;
+  final int failedCount;
+  final List<OfflineTransaction> queue;
   final DateTime? lastSyncTime;
   final String? lastError;
 
@@ -18,6 +20,8 @@ class SyncState {
     this.isOnline = true,
     this.status = SyncStatus.idle,
     this.pendingCount = 0,
+    this.failedCount = 0,
+    this.queue = const [],
     this.lastSyncTime,
     this.lastError,
   });
@@ -26,6 +30,8 @@ class SyncState {
     bool? isOnline,
     SyncStatus? status,
     int? pendingCount,
+    int? failedCount,
+    List<OfflineTransaction>? queue,
     DateTime? lastSyncTime,
     String? lastError,
     bool clearError = false,
@@ -34,6 +40,8 @@ class SyncState {
       isOnline: isOnline ?? this.isOnline,
       status: status ?? this.status,
       pendingCount: pendingCount ?? this.pendingCount,
+      failedCount: failedCount ?? this.failedCount,
+      queue: queue ?? this.queue,
       lastSyncTime: lastSyncTime ?? this.lastSyncTime,
       lastError: clearError ? null : (lastError ?? this.lastError),
     );
@@ -42,18 +50,15 @@ class SyncState {
 
 class SyncNotifier extends StateNotifier<SyncState> {
   final SyncService _syncService;
-  final OfflineStorage _storage;
   StreamSubscription<List<ConnectivityResult>>? _connectivitySub;
 
-  SyncNotifier(this._syncService, this._storage) : super(SyncState()) {
+  SyncNotifier(this._syncService) : super(SyncState()) {
     _init();
   }
 
   Future<void> _init() async {
-    // Initial pending count & last sync time
-    final count = await _storage.getPendingTransactionsCount();
-    final lastSync = await _storage.getLastCatalogSyncTime();
-    state = state.copyWith(pendingCount: count, lastSyncTime: lastSync);
+    // Initial load
+    await refreshQueue();
 
     // Monitor connectivity
     final connectivity = Connectivity();
@@ -65,10 +70,27 @@ class SyncNotifier extends StateNotifier<SyncState> {
       final online = !results.contains(ConnectivityResult.none);
       state = state.copyWith(isOnline: online);
       if (online && state.pendingCount > 0) {
-        // Auto-sync when back online
+        // Auto-sync when network returns
         syncAll();
       }
     });
+  }
+
+  Future<void> refreshQueue() async {
+    try {
+      final storage = await _syncService.getStorage();
+      final queue = await storage.getSyncQueue();
+      final pending = queue.where((t) => t.status != 'synced').toList();
+      final failed = queue.where((t) => t.status == 'failed').length;
+      final lastSync = await storage.getLastCatalogSyncTime();
+
+      state = state.copyWith(
+        queue: queue,
+        pendingCount: pending.length,
+        failedCount: failed,
+        lastSyncTime: lastSync,
+      );
+    } catch (_) {}
   }
 
   Future<void> syncAll({int? locationId}) async {
@@ -83,23 +105,23 @@ class SyncNotifier extends StateNotifier<SyncState> {
       // 2. Sync pending transactions
       final result = await _syncService.syncPendingTransactions();
 
-      final pendingCount = await _storage.getPendingTransactionsCount();
-      final lastSync = await _storage.getLastCatalogSyncTime();
+      await refreshQueue();
 
       if (result.isSuccess) {
         state = state.copyWith(
           status: SyncStatus.success,
-          pendingCount: pendingCount,
-          lastSyncTime: lastSync ?? DateTime.now(),
+          lastSyncTime: DateTime.now(),
         );
       } else {
         state = state.copyWith(
           status: SyncStatus.error,
-          pendingCount: pendingCount,
-          lastError: result.errors.isNotEmpty ? result.errors.first : 'Sync failed for some transactions',
+          lastError: result.errors.isNotEmpty
+              ? result.errors.first
+              : 'Some transactions could not be synced',
         );
       }
     } catch (e) {
+      await refreshQueue();
       state = state.copyWith(
         status: SyncStatus.error,
         lastError: e.toString(),
@@ -107,9 +129,33 @@ class SyncNotifier extends StateNotifier<SyncState> {
     }
   }
 
-  Future<void> refreshPendingCount() async {
-    final count = await _storage.getPendingTransactionsCount();
-    state = state.copyWith(pendingCount: count);
+  Future<bool> retrySingle(OfflineTransaction tx) async {
+    final storage = await _syncService.getStorage();
+    await storage.updateTransaction(tx.copyWith(status: 'pending', errorMessage: null));
+    await refreshQueue();
+    await syncAll();
+    return true;
+  }
+
+  Future<void> deleteSingle(String localId) async {
+    final storage = await _syncService.getStorage();
+    await storage.removeTransaction(localId);
+    await refreshQueue();
+  }
+
+  Future<void> syncCatalogOnly({int? locationId}) async {
+    state = state.copyWith(status: SyncStatus.syncing, clearError: true);
+    try {
+      await _syncService.syncCatalog(locationId: locationId);
+      final storage = await _syncService.getStorage();
+      final lastSync = await storage.getLastCatalogSyncTime();
+      state = state.copyWith(
+        status: SyncStatus.success,
+        lastSyncTime: lastSync ?? DateTime.now(),
+      );
+    } catch (e) {
+      state = state.copyWith(status: SyncStatus.error, lastError: e.toString());
+    }
   }
 
   @override
@@ -121,6 +167,5 @@ class SyncNotifier extends StateNotifier<SyncState> {
 
 final syncProvider = StateNotifierProvider<SyncNotifier, SyncState>((ref) {
   final syncService = ref.read(syncServiceProvider);
-  final storage = ref.read(offlineStorageProvider);
-  return SyncNotifier(syncService, storage);
+  return SyncNotifier(syncService);
 });

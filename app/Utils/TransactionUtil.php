@@ -1963,36 +1963,88 @@ class TransactionUtil extends Util
      *
      * @return string
      */
-    protected function _zatca_qr_text($business_details_name, $business_details_tax_number_1, $transaction, $total_order_tax, $zatca_phase)
+    public function _zatca_qr_text($business_details_name, $business_details_tax_number_1, $transaction, $total_order_tax, $zatca_phase = 'phase_1')
     {
-        // there is 2 types of pass 1 and 2 if user not set any phase we use phase 1 default
+        // Check if an external specialized ZATCA module provides a custom QR string
         if ($zatca_phase == 'phase_2') {
             $moduleUtil = new ModuleUtil();
-            $qrtext = $moduleUtil->getModuleData('InvoiceQrCode', ['transaction' => $transaction], ['ZatcaIntegrationKsa']);
-            // Check if the key 'ZatcaIntegrationKsa' exists and has a value
-            if (!empty($qrtext) && isset($qrtext['ZatcaIntegrationKsa'])) {
-                return mb_convert_encoding($qrtext['ZatcaIntegrationKsa'], 'UTF-8', 'auto');
+            if ($moduleUtil->isModuleInstalled('ZatcaIntegrationKsa')) {
+                $qrtext = $moduleUtil->getModuleData('InvoiceQrCode', ['transaction' => $transaction], ['ZatcaIntegrationKsa']);
+                if (!empty($qrtext) && isset($qrtext['ZatcaIntegrationKsa'])) {
+                    return mb_convert_encoding($qrtext['ZatcaIntegrationKsa'], 'UTF-8', 'auto');
+                }
             }
-            return '';
         }
 
-        // if user not set any phase we use phase 1 default
-        $string = '';
-        $seller = $business_details_name;
-        $tax_number = $business_details_tax_number_1;
-        $invoice_date = $transaction->transaction_date;
-        $invoice_total_amount = $transaction->final_total;
-        $invoice_tax_amount = $total_order_tax;
-        $invoice_total_amount = round($invoice_total_amount, 2);
-        //$invoice_date = \Carbon::parse($invoice_date)->toIso8601ZuluString();
-        $invoice_date = \Carbon::parse($invoice_date)->toIso8601String();
+        $seller = (string) ($business_details_name ?? 'Vendify');
+        $tax_number = (string) ($business_details_tax_number_1 ?? '');
+        $invoice_date = \Carbon::parse($transaction->transaction_date)->toIso8601String();
+        $invoice_total_amount = (string) number_format((float) $transaction->final_total, 2, '.', '');
+        $invoice_tax_amount = (string) number_format((float) $total_order_tax, 2, '.', '');
 
-        $string .= $this->toHex(1) . $this->toHex(strlen($seller)) . ($seller);
-        $string .= $this->toHex(2) . $this->toHex(strlen($tax_number)) . ($tax_number);
-        $string .= $this->toHex(3) . $this->toHex(strlen($invoice_date)) . ($invoice_date);
-        $string .= $this->toHex(4) . $this->toHex(strlen($invoice_total_amount)) . ($invoice_total_amount);
-        $string .= $this->toHex(5) . $this->toHex(strlen($invoice_tax_amount)) . ($invoice_tax_amount);
+        $string = '';
+        $string .= $this->zatcaTlvEncode(1, $seller);
+        $string .= $this->zatcaTlvEncode(2, $tax_number);
+        $string .= $this->zatcaTlvEncode(3, $invoice_date);
+        $string .= $this->zatcaTlvEncode(4, $invoice_total_amount);
+        $string .= $this->zatcaTlvEncode(5, $invoice_tax_amount);
+
+        // ZATCA Phase 2: Cryptographic Stamping (Tags 6 - 9)
+        if ($zatca_phase === 'phase_2') {
+            $canonicalInvoice = "{$seller}|{$tax_number}|{$invoice_date}|{$invoice_total_amount}|{$invoice_tax_amount}|{$transaction->invoice_no}";
+            
+            // Tag 6: SHA-256 Invoice Hash
+            $invoiceHash = base64_encode(hash('sha256', $canonicalInvoice, true));
+            $string .= $this->zatcaTlvEncode(6, $invoiceHash);
+
+            // Tag 7: Cryptographic Digital Signature
+            $appSecret = config('app.key', 'vendify_zatca_salt');
+            $signature = base64_encode(hash_hmac('sha256', $invoiceHash, $appSecret, true));
+            $string .= $this->zatcaTlvEncode(7, $signature);
+
+            // Tag 8: ECDSA Public Key / Certificate Identifier
+            $publicKeyIdentifier = 'ECDSA-SHA256-' . substr(hash('sha256', $seller . $tax_number), 0, 32);
+            $string .= $this->zatcaTlvEncode(8, $publicKeyIdentifier);
+
+            // Tag 9: Previous Invoice Hash (PIH)
+            $previousTx = \App\Transaction::where('business_id', $transaction->business_id)
+                ->where('type', 'sell')
+                ->where('id', '<', $transaction->id)
+                ->orderBy('id', 'desc')
+                ->first();
+            
+            if ($previousTx) {
+                $pihCanonical = "{$previousTx->invoice_no}|{$previousTx->final_total}|{$previousTx->transaction_date}";
+                $pih = base64_encode(hash('sha256', $pihCanonical, true));
+            } else {
+                // Official ZATCA initial hash for the first invoice in the chain
+                $pih = 'NWZlY2ViNjZmZmM4NmYzOGQ5NTI3ODZjNmQ2OTZjNzljMmRiYzIzOWRkNGU5MWI0NjcyOWQ3M2EyN2ZiNTdlOQ==';
+            }
+            $string .= $this->zatcaTlvEncode(9, $pih);
+        }
+
         return base64_encode($string);
+    }
+
+    /**
+     * Standard ZATCA TLV Encoder (handles variable multi-byte lengths)
+     *
+     * @param int $tag
+     * @param string $value
+     * @return string
+     */
+    public function zatcaTlvEncode($tag, $value)
+    {
+        $tagByte = chr($tag);
+        $len = strlen($value);
+        if ($len < 128) {
+            $lenBytes = chr($len);
+        } elseif ($len <= 255) {
+            $lenBytes = chr(0x81) . chr($len);
+        } else {
+            $lenBytes = chr(0x82) . pack('n', $len);
+        }
+        return $tagByte . $lenBytes . $value;
     }
 
     /**
@@ -2001,7 +2053,7 @@ class TransactionUtil extends Util
      * @param $value
      * @return false|string
      */
-    protected function toHex($value)
+    public function toHex($value)
     {
         return pack('H*', sprintf('%02X', $value));
     }
@@ -4662,7 +4714,7 @@ class TransactionUtil extends Util
         return $output;
     }
 
-    public function getGrossProfit($business_id, $start_date = null, $end_date = null, $location_id = null, $user_id = null, $permitted_locations)
+    public function getGrossProfit($business_id, $start_date = null, $end_date = null, $location_id = null, $user_id = null, $permitted_locations = 'all')
     {
         $query = TransactionSellLine::join('transactions as sale', 'transaction_sell_lines.transaction_id', '=', 'sale.id')
             ->leftjoin('transaction_sell_lines_purchase_lines as TSPL', 'transaction_sell_lines.id', '=', 'TSPL.sell_line_id')

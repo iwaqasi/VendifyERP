@@ -40,14 +40,14 @@
                   <div class="col-md-6">
                     <div class="form-group">
                         <label for="app_name">Application Name:*</label>
-                        <input type="text" class="form-control" name="APP_NAME" id="app_name" placeholder="Ultimate POS" required>
+                        <input type="text" class="form-control" name="APP_NAME" id="app_name" placeholder="Vendify POS" required>
                     </div>
                   </div>
                   
                   <div class="col-md-6">
                     <div class="form-group">
                         <label for="app_title">Application Title:</label>
-                        <input type="text" name="APP_TITLE" class="form-control" id="app_title">
+                        <input type="text" name="APP_TITLE" class="form-control" id="app_title" placeholder="Vendify POS & ERP">
                     </div>
                   </div>
 
@@ -148,7 +148,7 @@
                   <div class="col-md-6">
                     <div class="form-group">
                         <label for="MAIL_FROM_NAME">Default from name:</label>
-                        <input type="text" class="form-control" id="MAIL_FROM_NAME" name="MAIL_FROM_NAME" placeholder="Ultimate POS (Optional)">
+                        <input type="text" class="form-control" id="MAIL_FROM_NAME" name="MAIL_FROM_NAME" placeholder="Vendify POS (Optional)">
                     </div>
                   </div>
 

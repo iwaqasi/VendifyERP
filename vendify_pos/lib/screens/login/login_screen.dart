@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:vendify_pos/config/theme.dart';
+import 'package:vendify_pos/config/navigation.dart';
 import 'package:vendify_pos/providers/api_provider.dart';
 import 'package:vendify_pos/screens/pos/pos_layout_router.dart';
 import 'package:vendify_pos/screens/login/pin_screen.dart';
@@ -29,7 +30,21 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   }
 
   Future<void> _handleLogin() async {
-    if (!_formKey.currentState!.validate()) return;
+    if (_formKey.currentState != null && !_formKey.currentState!.validate()) {
+      return;
+    }
+
+    final username = _emailController.text.trim();
+    final password = _passwordController.text;
+
+    if (username.isEmpty) {
+      setState(() => _error = 'Please enter your username or email');
+      return;
+    }
+    if (password.isEmpty) {
+      setState(() => _error = 'Please enter your password');
+      return;
+    }
 
     setState(() {
       _isLoading = true;
@@ -39,8 +54,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     try {
       final auth = ref.read(authServiceProvider);
       final response = await auth.login(
-        email: _emailController.text.trim(),
-        password: _passwordController.text,
+        email: username,
+        password: password,
       );
 
       // Save all user & business info for POS screen
@@ -53,20 +68,28 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       await prefs.setString('user_name', response.user.name.isNotEmpty ? response.user.name : 'Admin');
       await prefs.setBool('has_assigned_location', response.user.hasAssignedLocation);
       if (response.user.defaultLocationName != null) {
-        await prefs.setString('assigned_location_name', response.user.defaultLocationName!);
+        await prefs.setString('assigned_location_name', response.user.defaultLocationName ?? '');
       }
 
       if (mounted) {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (_) => const PosLayoutRouter()),
-        );
+        if (navigatorKey.currentState != null) {
+          navigatorKey.currentState!.pushReplacement(
+            MaterialPageRoute(builder: (_) => const PosLayoutRouter()),
+          );
+        } else {
+          Navigator.of(context, rootNavigator: true).pushReplacement(
+            MaterialPageRoute(builder: (_) => const PosLayoutRouter()),
+          );
+        }
       }
-    } catch (e) {
-      setState(() {
-        _error = e.toString().replaceAll('Exception: ', '');
-        _isLoading = false;
-      });
+    } catch (e, stackTrace) {
+      debugPrint('[LOGIN ERROR] $e\n$stackTrace');
+      if (mounted) {
+        setState(() {
+          _error = e.toString().replaceAll('Exception: ', '');
+          _isLoading = false;
+        });
+      }
     }
   }
 
@@ -124,14 +147,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   key: _formKey,
                   child: Column(
                     children: [
-                      // Email
-                      TextField(
+                      // Username or Email
+                      TextFormField(
                         controller: _emailController,
                         style: const TextStyle(color: AppTheme.textPrimary),
                         decoration: InputDecoration(
-                          hintText: 'Email address',
-                          hintStyle: TextStyle(color: AppTheme.textMuted),
-                          prefixIcon: const Icon(Icons.email_outlined, color: AppTheme.textMuted),
+                          hintText: 'Username or Email',
+                          hintStyle: const TextStyle(color: AppTheme.textMuted),
+                          prefixIcon: const Icon(Icons.person_outline, color: AppTheme.textMuted),
                           filled: true,
                           fillColor: AppTheme.surface,
                           border: OutlineInputBorder(
@@ -147,17 +170,18 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                             borderSide: const BorderSide(color: AppTheme.primary, width: 2),
                           ),
                         ),
+                        validator: (v) => (v == null || v.trim().isEmpty) ? 'Please enter username or email' : null,
                       ),
                       const SizedBox(height: 16),
 
                       // Password
-                      TextField(
+                      TextFormField(
                         controller: _passwordController,
                         obscureText: _obscurePassword,
                         style: const TextStyle(color: AppTheme.textPrimary),
                         decoration: InputDecoration(
                           hintText: 'Password',
-                          hintStyle: TextStyle(color: AppTheme.textMuted),
+                          hintStyle: const TextStyle(color: AppTheme.textMuted),
                           prefixIcon: const Icon(Icons.lock_outlined, color: AppTheme.textMuted),
                           suffixIcon: IconButton(
                             icon: Icon(
@@ -181,6 +205,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                             borderSide: const BorderSide(color: AppTheme.primary, width: 2),
                           ),
                         ),
+                        validator: (v) => (v == null || v.isEmpty) ? 'Please enter password' : null,
                       ),
 
                     ],
@@ -200,7 +225,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       border: Border.all(color: AppTheme.error.withValues(alpha: 0.3)),
                     ),
                     child: Text(
-                      _error!,
+                      _error ?? '',
                       style: const TextStyle(color: AppTheme.error, fontSize: 13),
                       textAlign: TextAlign.center,
                     ),
@@ -254,10 +279,15 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 // Switch to PIN
                 TextButton(
                   onPressed: () {
-                    Navigator.pushReplacement(
-                      context,
-                      MaterialPageRoute(builder: (_) => const PinScreen()),
-                    );
+                    if (navigatorKey.currentState != null) {
+                      navigatorKey.currentState!.pushReplacement(
+                        MaterialPageRoute(builder: (_) => const PinScreen()),
+                      );
+                    } else {
+                      Navigator.of(context, rootNavigator: true).pushReplacement(
+                        MaterialPageRoute(builder: (_) => const PinScreen()),
+                      );
+                    }
                   },
                   child: const Text(
                     'Use PIN instead',

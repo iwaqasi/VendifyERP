@@ -329,7 +329,8 @@ class TransactionPaymentController extends Controller
 
         if (request()->ajax()) {
             try {
-                $payment = TransactionPayment::findOrFail($id);
+                $business_id = request()->session()->get('user.business_id');
+                $payment = TransactionPayment::where('business_id', $business_id)->findOrFail($id);
 
                 DB::beginTransaction();
 
@@ -619,8 +620,8 @@ class TransactionPaymentController extends Controller
         }
 
         if (request()->ajax()) {
-            $business_id = request()->session()->get('business.id');
-            $single_payment_line = TransactionPayment::findOrFail($payment_id);
+            $business_id = request()->session()->get('user.business_id') ?? request()->session()->get('business.id');
+            $single_payment_line = TransactionPayment::where('business_id', $business_id)->findOrFail($payment_id);
 
             $transaction = null;
             if (! empty($single_payment_line->transaction_id)) {

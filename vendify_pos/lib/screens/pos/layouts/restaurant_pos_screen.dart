@@ -14,6 +14,12 @@ import 'package:vendify_pos/screens/pos/payment_screen.dart';
 import 'package:vendify_pos/screens/login/pin_screen.dart';
 import 'package:vendify_pos/screens/pos/daily_register_screen.dart';
 import 'package:vendify_pos/screens/pos/customer_selection_sheet.dart';
+import 'package:vendify_pos/screens/pos/widgets/sync_center_dialog.dart';
+import 'package:vendify_pos/screens/pos/widgets/sync_status_badge.dart';
+import 'package:vendify_pos/screens/pos/widgets/diagnostics_dialog.dart';
+import 'package:vendify_pos/screens/pos/widgets/audit_trail_dialog.dart';
+import 'package:provider/provider.dart' as p;
+import 'package:vendify_pos/providers/locale_provider.dart';
 
 class RestaurantPosScreen extends ConsumerStatefulWidget {
   final String businessType;
@@ -78,7 +84,7 @@ class _RestaurantPosScreenState extends ConsumerState<RestaurantPosScreen> {
       : _receiptDiscount;
   double get _grandTotal => (_subtotal + _totalTax - _receiptDiscountAmount - _rpDiscount).clamp(0, double.infinity);
   int get _distinctItemCount => _cartItems.length;
-  int get _totalQuantity => _cartItems.fold(0, (sum, item) => sum + item.quantity.toInt());
+  num get _totalQuantity => _cartItems.fold(0.0, (sum, item) => sum + item.quantity);
 
   @override
   void initState() {
@@ -118,11 +124,13 @@ class _RestaurantPosScreenState extends ConsumerState<RestaurantPosScreen> {
         _posService.getCategories(),
         _posService.getPosSettings(),
       ]);
-      final settings = results[2] as Map<String, dynamic>;
+      final settings = (results[2] is Map) ? Map<String, dynamic>.from(results[2] as Map) : <String, dynamic>{};
       
       setState(() {
-        _products = results[0] as List<Product>;
-        _features = settings['features'] ?? _features;
+        _products = (results[0] is List<Product>) ? results[0] as List<Product> : <Product>[];
+        if (settings['features'] is Map) {
+          _features = Map<String, dynamic>.from(settings['features'] as Map);
+        }
         _isLoading = false;
       });
       
@@ -552,6 +560,48 @@ class _RestaurantPosScreenState extends ConsumerState<RestaurantPosScreen> {
             onPressed: _openInventory,
             tooltip: 'Inventory',
           ),
+          const SizedBox(width: 8),
+          const SyncStatusBadge(),
+          const SizedBox(width: 6),
+          IconButton(
+            icon: const Icon(Icons.sync_alt, color: AppTheme.textSecondary, size: 20),
+            onPressed: () => SyncCenterDialog.show(context),
+            tooltip: 'Sync Center',
+          ),
+          IconButton(
+            icon: const Icon(Icons.bug_report_outlined, color: AppTheme.textSecondary, size: 20),
+            onPressed: () => DiagnosticsDialog.show(context),
+            tooltip: 'Diagnostics & Logs',
+          ),
+          IconButton(
+            icon: const Icon(Icons.shield_outlined, color: AppTheme.textSecondary, size: 20),
+            onPressed: () => AuditTrailDialog.show(context, _posService),
+            tooltip: 'Audit Trail & Activity Logs',
+          ),
+          const SizedBox(width: 4),
+          p.Consumer<LocaleProvider>(
+            builder: (ctx, loc, _) => InkWell(
+              onTap: () => loc.toggleLocale(),
+              borderRadius: BorderRadius.circular(6),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: AppTheme.surfaceLight,
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(color: AppTheme.border),
+                ),
+                child: Text(
+                  loc.isRtl ? 'English' : 'عربي',
+                  style: const TextStyle(
+                    color: AppTheme.primary,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12,
+                  ),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 4),
           IconButton(
             icon: const Icon(Icons.logout, color: AppTheme.textSecondary, size: 22),
             onPressed: _logout,
@@ -911,23 +961,7 @@ class _RestaurantPosScreenState extends ConsumerState<RestaurantPosScreen> {
             style: const TextStyle(color: AppTheme.textSecondary, fontSize: 12),
           ),
           const Spacer(),
-          Row(
-            children: [
-              Container(
-                width: 8,
-                height: 8,
-                decoration: const BoxDecoration(
-                  color: AppTheme.success,
-                  shape: BoxShape.circle,
-                ),
-              ),
-              const SizedBox(width: 6),
-              const Text(
-                'Online',
-                style: TextStyle(color: AppTheme.success, fontSize: 12),
-              ),
-            ],
-          ),
+          const SyncStatusBadge(isCompact: true),
         ],
       ),
     );

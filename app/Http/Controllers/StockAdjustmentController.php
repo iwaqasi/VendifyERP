@@ -343,10 +343,13 @@ class StockAdjustmentController extends Controller
             if (request()->ajax()) {
                 DB::beginTransaction();
 
-                $stock_adjustment = Transaction::where('id', $id)
+                $business_id = request()->session()->get('user.business_id');
+
+                $stock_adjustment = Transaction::where('business_id', $business_id)
+                                    ->where('id', $id)
                                     ->where('type', 'stock_adjustment')
                                     ->with(['stock_adjustment_lines'])
-                                    ->first();
+                                    ->firstOrFail();
 
                 //Add deleted product quantity to available quantity
                 $stock_adjustment_lines = $stock_adjustment->stock_adjustment_lines;

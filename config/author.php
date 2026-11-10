@@ -4,20 +4,15 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Company/Author/Developer/Licence information of the application
+    | Application Vendor & Version Configuration
     |--------------------------------------------------------------------------
-    |
-    | All details about the author/developer/contact/licence of the application
-    |
-    | IMPORTANT: CHANGING ANY OF THIS INFORMATION WILL UNSTABILIZE THE APPLICATION
-    |
     */
 
-    'vendor' => 'Ultimate Fosters',
-    'vendor_url' => 'http://ultimatefosters.com',
-    'email' => 'thewebfosters@gmail.com',
-    'app_version' => '7.0',
-    'lic1' => 'aHR0cHM6Ly9sLnVsdGltYXRlZm9zdGVycy5jb20vYXBpL3R5cGVfMQ==',
+    'vendor' => 'Vendify',
+    'vendor_url' => env('APP_URL', 'https://vendify.app'),
+    'email' => env('MAIL_FROM_ADDRESS', 'support@vendify.app'),
+    'app_version' => '1.0.0',
+    'lic1' => '',
     'pid' => 1,
-    'envato_purchase_code' => env('ENVATO_PURCHASE_CODE', 0),
+    'envato_purchase_code' => '',
 ];

@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:vendify_pos/models/user.dart';
 import 'package:vendify_pos/services/api_service.dart';
 
@@ -17,13 +18,21 @@ class AuthService {
       'device_name': deviceName,
     });
 
-    if (response.data['success'] == true) {
-      final loginResponse = LoginResponse.fromJson(response.data);
+    final rawData = response.data;
+    Map<String, dynamic> data = {};
+    if (rawData is Map) {
+      data = Map<String, dynamic>.from(rawData);
+    } else if (rawData is String && rawData.trim().startsWith('{')) {
+      data = Map<String, dynamic>.from(jsonDecode(rawData));
+    }
+
+    if (data['success'] == true) {
+      final loginResponse = LoginResponse.fromJson(data);
       await _api.saveToken(loginResponse.accessToken);
       return loginResponse;
     }
 
-    throw Exception(response.data['message'] ?? 'Login failed');
+    throw Exception(data['message']?.toString() ?? 'Login failed');
   }
 
   Future<void> logout() async {

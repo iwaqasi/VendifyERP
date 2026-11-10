@@ -639,10 +639,13 @@ class CmsController extends Controller
     {
         $business_id = request()->session()->get('user.business_id');
         $media = DB::table('cms_media')->where('id', $id)->where('business_id', $business_id)->first();
-        if ($media && \Storage::disk('public')->exists($media->file_path)) {
+        if (!$media) {
+            abort(404);
+        }
+        if (\Storage::disk('public')->exists($media->file_path)) {
             \Storage::disk('public')->delete($media->file_path);
         }
-        DB::table('cms_media')->where('id', $id)->delete();
+        DB::table('cms_media')->where('id', $id)->where('business_id', $business_id)->delete();
         return redirect()->route('cms.media')->with('success', 'File deleted');
     }
 }

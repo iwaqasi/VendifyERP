@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 
 class Product extends Model
 {
+    use \App\Traits\BelongsToTenant;
     /**
      * The attributes that aren't mass assignable.
      *

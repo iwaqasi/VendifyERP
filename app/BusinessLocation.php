@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 
 class BusinessLocation extends Model
 {
+    use \App\Traits\BelongsToTenant;
     /**
      * The attributes that aren't mass assignable.
      *
@@ -144,21 +145,21 @@ class BusinessLocation extends Model
         $location = $this;
         $address_line_1 = [];
         if (! empty($location->landmark)) {
-            $address_line_1[] = $location->landmark;
+            $address_line_1[] = e($location->landmark);
         }
         if (! empty($location->city)) {
-            $address_line_1[] = $location->city;
+            $address_line_1[] = e($location->city);
         }
         if (! empty($location->state)) {
-            $address_line_1[] = $location->state;
+            $address_line_1[] = e($location->state);
         }
         if (! empty($location->zip_code)) {
-            $address_line_1[] = $location->zip_code;
+            $address_line_1[] = e($location->zip_code);
         }
         $address = implode(', ', $address_line_1);
         $address_line_2 = [];
         if (! empty($location->country)) {
-            $address_line_2[] = $location->country;
+            $address_line_2[] = e($location->country);
         }
         $address .= '<br>';
         $address .= implode(', ', $address_line_2);

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Contact;
+use App\Http\Requests\Api\V1\CreateContactRequest;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -29,7 +30,7 @@ class ContactController extends BaseApiController
                   ->orWhere('contact_id', 'LIKE', "%{$search}%")
                   ->orWhere('mobile', 'LIKE', "%{$search}%")
                   ->orWhere('email', 'LIKE', "%{$search}%")
-                  ->orWhere('business_name', 'LIKE', "%{$search}%");
+                  ->orWhere('supplier_business_name', 'LIKE', "%{$search}%");
             });
         }
 
@@ -83,7 +84,8 @@ class ContactController extends BaseApiController
         }
 
         // Calculate due amounts: final_total - sum(payments)
-        $sell_due = \App\Transaction::where('contact_id', $id)
+        $sell_due = \App\Transaction::where('business_id', $business_id)
+            ->where('contact_id', $id)
             ->where('type', 'sell')
             ->whereIn('payment_status', ['due', 'partial'])
             ->get()
@@ -92,7 +94,8 @@ class ContactController extends BaseApiController
                 return $t->final_total - $paid;
             });
 
-        $purchase_due = \App\Transaction::where('contact_id', $id)
+        $purchase_due = \App\Transaction::where('business_id', $business_id)
+            ->where('contact_id', $id)
             ->where('type', 'purchase')
             ->whereIn('payment_status', ['due', 'partial'])
             ->get()
@@ -104,7 +107,7 @@ class ContactController extends BaseApiController
         $data = [
             'id' => $contact->id,
             'name' => $contact->name,
-            'business_name' => $contact->business_name,
+            'business_name' => $contact->supplier_business_name,
             'contact_id' => $contact->contact_id,
             'type' => $contact->type,
             'mobile' => $contact->mobile,
@@ -174,9 +177,13 @@ class ContactController extends BaseApiController
      * @bodyParam email string Email address. Example: john@example.com
      * @bodyParam type string Type: customer, supplier, both. Example: customer
      */
-    public function store(Request $request)
+    public function store(CreateContactRequest $request)
     {
         $business_id = $this->getBusinessId($request);
+
+        if (!auth()->user()->can('customer.create') && !auth()->user()->can('supplier.create')) {
+            return $this->errorResponse('Unauthorized to create contacts.', 403);
+        }
 
         $request->validate([
             'name' => 'required|string|max:255',
@@ -255,6 +262,10 @@ class ContactController extends BaseApiController
     public function update(Request $request, int $id)
     {
         $business_id = $this->getBusinessId($request);
+
+        if (!auth()->user()->can('customer.update') && !auth()->user()->can('supplier.update')) {
+            return $this->errorResponse('Unauthorized to update contacts.', 403);
+        }
 
         $contact = Contact::where('business_id', $business_id)->find($id);
 

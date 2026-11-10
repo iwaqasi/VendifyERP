@@ -87,6 +87,10 @@ class SettingsController extends BaseApiController
         $methods = [
             ['method' => 'cash', 'label' => 'Cash'],
             ['method' => 'card', 'label' => 'Card'],
+            ['method' => 'knet', 'label' => 'K-NET'],
+            ['method' => 'mada', 'label' => 'Mada'],
+            ['method' => 'apple_pay', 'label' => 'Apple Pay'],
+            ['method' => 'stc_pay', 'label' => 'STC Pay'],
             ['method' => 'bank_transfer', 'label' => 'Bank Transfer'],
             ['method' => 'cheque', 'label' => 'Cheque'],
             ['method' => 'other', 'label' => 'Other'],
@@ -189,6 +193,9 @@ class SettingsController extends BaseApiController
             $enabledPaymentMethods = [
                 ['method' => 'cash', 'account' => null],
                 ['method' => 'card', 'account' => null],
+                ['method' => 'knet', 'account' => null],
+                ['method' => 'mada', 'account' => null],
+                ['method' => 'apple_pay', 'account' => null],
             ];
         }
 
@@ -249,5 +256,50 @@ class SettingsController extends BaseApiController
                 'default_sales_tax' => $business->default_sales_tax,
             ],
         ]);
+    }
+
+    /**
+     * Get selling price groups (Wholesale, Retail, Bulk)
+     * GET /api/v1/wholesale/price-groups
+     */
+    public function priceGroups(Request $request): JsonResponse
+    {
+        $business_id = $this->getBusinessId($request);
+
+        $groups = \Illuminate\Support\Facades\DB::table('selling_price_groups')
+            ->where('business_id', $business_id)
+            ->where('is_active', 1)
+            ->whereNull('deleted_at')
+            ->select(['id', 'name', 'description'])
+            ->get();
+
+        return $this->successResponse(['price_groups' => $groups]);
+    }
+
+    /**
+     * Get variation group prices for a specific price group
+     * GET /api/v1/wholesale/group-prices/{group_id}
+     */
+    public function groupPrices(Request $request, int $group_id): JsonResponse
+    {
+        $business_id = $this->getBusinessId($request);
+
+        $prices = \Illuminate\Support\Facades\DB::table('variation_group_prices as vgp')
+            ->join('variations as v', 'vgp.variation_id', '=', 'v.id')
+            ->join('products as p', 'v.product_id', '=', 'p.id')
+            ->where('p.business_id', $business_id)
+            ->where('vgp.price_group_id', $group_id)
+            ->select([
+                'vgp.id',
+                'vgp.variation_id',
+                'vgp.price_group_id',
+                'vgp.price_inc_tax',
+                'vgp.price_type',
+                'v.product_id',
+                'v.sub_sku',
+            ])
+            ->get();
+
+        return $this->successResponse(['group_prices' => $prices]);
     }
 }

@@ -121,7 +121,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
         const Text('SORT BY', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: CmsTheme.textPrimary)),
         const SizedBox(height: 12),
         DropdownButtonFormField<String>(
-          value: _sortBy,
+          initialValue: _sortBy,
           decoration: InputDecoration(
             border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
             contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),

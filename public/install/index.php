@@ -277,11 +277,6 @@ if (empty($_POST)) {
                 </center>
 
                 <div class="col-md-12">
-                    
-                <br/>
-                    <p class="text-center">
-                        <a href="https://ultimatefosters.com/product/installation-update-service/?ref=install-step1" target="_blank" class="btn btn-default"><i class="fas fa-cogs"></i> Take Installation Service</a>
-                    </p>
                     <hr />
                 </div>
 

@@ -1,5 +1,6 @@
 /// Stub implementation for non-web platforms (Windows, Android, iOS, macOS, Linux).
 /// No web-specific code is used here.
+library;
 
 void openPrintWindow(String htmlContent) {
   // No-op on native platforms — printing is handled via the `printing` package

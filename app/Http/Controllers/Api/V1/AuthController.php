@@ -14,11 +14,15 @@ class AuthController extends BaseApiController
     public function login(Request $request): JsonResponse
     {
         $request->validate([
-            'email' => 'required|email',
-            'password' => 'required',
+            'email' => 'required|string',
+            'password' => 'required|string',
         ]);
 
-        $user = \App\User::where('email', $request->email)->first();
+        $identifier = $request->email;
+
+        $user = \App\User::where('email', $identifier)
+            ->orWhere('username', $identifier)
+            ->first();
 
         if (!$user || !Hash::check($request->password, $user->password)) {
             return $this->errorResponse('The provided credentials are incorrect.', 401);
@@ -43,21 +47,16 @@ class AuthController extends BaseApiController
     {
         $request->validate([
             'pin' => 'required|string',
-            'business_id' => 'sometimes|integer',
+            'business_id' => 'required|integer|exists:business,id',
         ]);
 
-        $query = \App\User::where('is_enable_service_staff_pin', 1)
+        $user = \App\User::where('business_id', $request->business_id)
+            ->where('is_enable_service_staff_pin', 1)
             ->where('service_staff_pin', $request->pin)
-            ->where('status', 'active');
+            ->where('status', 'active')
+            ->first();
 
-        // Optional: filter by business_id if provided (for multi-business setups)
-        if ($request->has('business_id')) {
-            $query->where('business_id', $request->business_id);
-        }
-
-        $user = $query->first();
-
-        if (!$user) {
+        if (! $user) {
             return $this->errorResponse('Invalid PIN or no staff member found with this PIN.', 401);
         }
 

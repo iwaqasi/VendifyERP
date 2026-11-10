@@ -80,7 +80,7 @@ class _HomeScreenState extends State<HomeScreen> {
             Text(
               'SAYA ELEGANT STYLE',
               style: TextStyle(
-                color: Colors.white.withOpacity(0.8),
+                color: Colors.white.withValues(alpha: 0.8),
                 fontSize: 16,
                 letterSpacing: 6,
                 fontWeight: FontWeight.w300,

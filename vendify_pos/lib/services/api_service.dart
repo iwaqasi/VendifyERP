@@ -90,8 +90,13 @@ class ApiService {
 
   void clearToken() {
     _token = null;
-    const storage = FlutterSecureStorage();
-    storage.delete(key: 'api_token');
+    SharedPreferences.getInstance().then((prefs) => prefs.remove('api_token'));
+    if (!kIsWeb) {
+      try {
+        const storage = FlutterSecureStorage();
+        storage.delete(key: 'api_token');
+      } catch (_) {}
+    }
   }
 
   String? get token => _token;
@@ -127,13 +132,32 @@ class ApiService {
 
   Future<void> saveToken(String token) async {
     _token = token;
-    const storage = FlutterSecureStorage();
-    await storage.write(key: 'api_token', value: token);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('api_token', token);
+    if (!kIsWeb) {
+      try {
+        const storage = FlutterSecureStorage();
+        await storage.write(key: 'api_token', value: token);
+      } catch (_) {}
+    }
   }
 
   Future<void> loadToken() async {
-    const storage = FlutterSecureStorage();
-    _token = await storage.read(key: 'api_token');
+    if (kIsWeb) {
+      final prefs = await SharedPreferences.getInstance();
+      _token = prefs.getString('api_token');
+      return;
+    }
+    try {
+      const storage = FlutterSecureStorage();
+      _token = await storage.read(key: 'api_token');
+    } catch (_) {
+      // Fallback to SharedPreferences
+    }
+    if (_token == null) {
+      final prefs = await SharedPreferences.getInstance();
+      _token = prefs.getString('api_token');
+    }
   }
 
   Future<void> saveBaseUrl(String url) async {
@@ -163,9 +187,14 @@ class ApiService {
 
   Future<void> clearAll() async {
     _token = null;
-    const storage = FlutterSecureStorage();
-    await storage.delete(key: 'api_token');
+    if (!kIsWeb) {
+      try {
+        const storage = FlutterSecureStorage();
+        await storage.delete(key: 'api_token');
+      } catch (_) {}
+    }
     final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('api_token');
     await prefs.remove('base_url');
   }
 }

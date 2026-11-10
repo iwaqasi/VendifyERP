@@ -1,4 +1,3 @@
-import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
@@ -81,6 +80,7 @@ class PrintService {
     String? change,
     required String footer,
     String currencySymbol = 'KD',
+    String? zatcaQr,
   }) async {
     final paperSize = await getPaperSize();
 
@@ -101,6 +101,7 @@ class PrintService {
         change: change,
         footer: footer,
         currencySymbol: currencySymbol,
+        zatcaQr: zatcaQr,
       );
       platform.openPrintWindow(htmlContent);
     } else {
@@ -121,10 +122,49 @@ class PrintService {
         footer: footer,
         currencySymbol: currencySymbol,
         paperSize: paperSize,
+        zatcaQr: zatcaQr,
       );
       await Printing.layoutPdf(
         onLayout: (PdfPageFormat format) async => Uint8List.fromList(pdfBytes),
         name: 'Receipt',
+        usePrinterSettings: true,
+      );
+    }
+  }
+
+  /// Print a custom text slip (e.g., EOD staff slip or report)
+  Future<void> printSlip({required String title, required String content}) async {
+    if (kIsWeb) {
+      final html = '''
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>$title</title>
+  <style>
+    @page { size: 80mm auto; margin: 0; }
+    body { font-family: monospace; font-size: 12px; padding: 10px; margin: 0; white-space: pre-wrap; line-height: 1.4; color: #000; background: #fff; }
+  </style>
+</head>
+<body>$content</body>
+<script>
+  window.onload = function() { window.print(); };
+</script>
+</html>
+''';
+      platform.openPrintWindow(html);
+    } else {
+      final doc = pw.Document();
+      doc.addPage(
+        pw.Page(
+          pageFormat: const PdfPageFormat(80 * PdfPageFormat.mm, double.infinity, marginAll: 5 * PdfPageFormat.mm),
+          build: (ctx) => pw.Text(content, style: const pw.TextStyle(fontSize: 9)),
+        ),
+      );
+      final bytes = await doc.save();
+      await Printing.layoutPdf(
+        onLayout: (_) async => bytes,
+        name: title,
         usePrinterSettings: true,
       );
     }
@@ -148,6 +188,7 @@ class PrintService {
     required String footer,
     String currencySymbol = 'KD',
     PaperSize paperSize = PaperSize.thermal80,
+    String? zatcaQr,
   }) async {
     PdfPageFormat pageFormat;
     switch (paperSize) {
@@ -169,9 +210,21 @@ class PrintService {
     }
 
     final pdf = pw.Document();
-    final font = await PdfGoogleFonts.notoSansRegular();
-    final fontBold = await PdfGoogleFonts.notoSansBold();
-    final fontMono = await PdfGoogleFonts.notoSansMonoRegular();
+    
+    pw.Font font;
+    pw.Font fontBold;
+    pw.Font fontMono;
+
+    try {
+      font = await PdfGoogleFonts.notoSansRegular();
+      fontBold = await PdfGoogleFonts.notoSansBold();
+      fontMono = await PdfGoogleFonts.notoSansMonoRegular();
+    } catch (_) {
+      // Offline fallback: Use built-in standard PDF fonts when offline
+      font = pw.Font.helvetica();
+      fontBold = pw.Font.helveticaBold();
+      fontMono = pw.Font.courier();
+    }
 
     pdf.addPage(
       pw.MultiPage(
@@ -308,18 +361,34 @@ class PrintService {
           pw.SizedBox(height: 8),
 
           pw.Center(
-            child: pw.BarcodeWidget(
-              barcode: pw.Barcode.code128(),
-              data: invoiceNumber,
-              width: 150,
-              height: 35,
-              drawText: false,
-            ),
-          ),
-          pw.SizedBox(height: 2),
-          pw.Center(
-            child: pw.Text(invoiceNumber,
-                style: pw.TextStyle(font: fontMono, fontSize: 7, color: PdfColors.grey500)),
+            child: (zatcaQr != null && zatcaQr.isNotEmpty)
+                ? pw.Column(
+                    children: [
+                      pw.BarcodeWidget(
+                        barcode: pw.Barcode.qrCode(),
+                        data: zatcaQr,
+                        width: 85,
+                        height: 85,
+                      ),
+                      pw.SizedBox(height: 3),
+                      pw.Text('ZATCA / Tax E-Invoice',
+                          style: pw.TextStyle(font: font, fontSize: 7, color: PdfColors.grey600)),
+                    ],
+                  )
+                : pw.Column(
+                    children: [
+                      pw.BarcodeWidget(
+                        barcode: pw.Barcode.code128(),
+                        data: invoiceNumber,
+                        width: 150,
+                        height: 35,
+                        drawText: false,
+                      ),
+                      pw.SizedBox(height: 2),
+                      pw.Text(invoiceNumber,
+                          style: pw.TextStyle(font: fontMono, fontSize: 7, color: PdfColors.grey500)),
+                    ],
+                  ),
           ),
         ],
       ),
@@ -359,6 +428,7 @@ class PrintService {
     String? change,
     required String footer,
     String currencySymbol = 'KD',
+    String? zatcaQr,
   }) {
     final buffer = StringBuffer();
     buffer.writeln('''
@@ -433,8 +503,9 @@ class PrintService {
   <hr/>
   <div class="footer">$footer</div>
   <div class="barcode">
-    <img src="https://barcodeapi.org/api/code128/$invoiceNumber" alt="barcode" />
-    <div class="barcode-text">$invoiceNumber</div>
+    ${(zatcaQr != null && zatcaQr.isNotEmpty)
+      ? '<img src="https://api.qrserver.com/v1/create-qr-code/?size=110x110&data=${Uri.encodeComponent(zatcaQr)}" alt="ZATCA QR" /><div class="barcode-text">ZATCA / Tax E-Invoice</div>'
+      : '<img src="https://barcodeapi.org/api/code128/$invoiceNumber" alt="barcode" /><div class="barcode-text">$invoiceNumber</div>'}
   </div>
 </div>''');
 

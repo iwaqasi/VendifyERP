@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart' hide Category;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:vendify_pos/models/product.dart';
@@ -25,6 +26,47 @@ class OfflineStorage {
   static const _secure = FlutterSecureStorage(
     aOptions: AndroidOptions(encryptedSharedPreferences: true),
   );
+
+  Future<String?> _readSecure(String key) async {
+    if (kIsWeb) {
+      final prefs = await SharedPreferences.getInstance();
+      return prefs.getString(key);
+    }
+    try {
+      return await _secure.read(key: key);
+    } catch (_) {
+      final prefs = await SharedPreferences.getInstance();
+      return prefs.getString(key);
+    }
+  }
+
+  Future<void> _writeSecure(String key, String value) async {
+    if (kIsWeb) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(key, value);
+      return;
+    }
+    try {
+      await _secure.write(key: key, value: value);
+    } catch (_) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(key, value);
+    }
+  }
+
+  Future<void> _deleteSecure(String key) async {
+    if (kIsWeb) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(key);
+      return;
+    }
+    try {
+      await _secure.delete(key: key);
+    } catch (_) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(key);
+    }
+  }
 
   String _k(String key) => '${key}_biz_$businessId';
 
@@ -119,14 +161,14 @@ class OfflineStorage {
   }
 
   Future<List<Contact>> getCachedContacts({String? search}) async {
-    var data = await _secure.read(key: _k(_keyContacts));
+    var data = await _readSecure(_k(_keyContacts));
 
     // One-time migration from the legacy plaintext SharedPreferences copy.
     if (data == null) {
       final prefs = await SharedPreferences.getInstance();
       final legacy = prefs.getString(_k(_keyContacts));
       if (legacy != null) {
-        await _secure.write(key: _k(_keyContacts), value: legacy);
+        await _writeSecure(_k(_keyContacts), legacy);
         await prefs.remove(_k(_keyContacts));
         data = legacy;
       }
@@ -166,14 +208,14 @@ class OfflineStorage {
   // so it lives in ENCRYPTED storage, never plaintext prefs.
 
   Future<List<OfflineTransaction>> getSyncQueue() async {
-    var data = await _secure.read(key: _keySyncQueue);
+    var data = await _readSecure(_keySyncQueue);
 
     // One-time migration from the legacy plaintext SharedPreferences copy.
     if (data == null) {
       final prefs = await SharedPreferences.getInstance();
       final legacy = prefs.getString(_keySyncQueue);
       if (legacy != null) {
-        await _secure.write(key: _keySyncQueue, value: legacy);
+        await _writeSecure(_keySyncQueue, legacy);
         await prefs.remove(_keySyncQueue);
         data = legacy;
       }
@@ -212,7 +254,7 @@ class OfflineStorage {
 
   Future<void> _saveQueue(List<OfflineTransaction> queue) async {
     final jsonList = queue.map((t) => t.toJson()).toList();
-    await _secure.write(key: _keySyncQueue, value: jsonEncode(jsonList));
+    await _writeSecure(_keySyncQueue, jsonEncode(jsonList));
   }
 
   Future<int> getPendingTransactionsCount() async {
@@ -227,7 +269,7 @@ class OfflineStorage {
     await prefs.remove(_k(_keyTaxRates));
     await prefs.remove(_k(_keyLastCatalogSync));
 
-    await _secure.delete(key: _k(_keyContacts));
-    await _secure.delete(key: _keySyncQueue);
+    await _deleteSecure(_k(_keyContacts));
+    await _deleteSecure(_keySyncQueue);
   }
 }

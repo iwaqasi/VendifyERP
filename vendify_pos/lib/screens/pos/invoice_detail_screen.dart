@@ -583,16 +583,27 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
                           const Divider(height: 1),
                           const SizedBox(height: 10),
 
-                          // Barcode of invoice number
-                          BarcodeWidget(
-                            barcode: Barcode.code128(),
-                            data: invoiceNo,
-                            width: 200,
-                            height: 50,
-                            drawText: false,
-                          ),
-                          const SizedBox(height: 4),
-                          Text(invoiceNo, style: TextStyle(fontSize: 10, color: AppTheme.textMuted, letterSpacing: 1)),
+                          // Barcode of invoice number or ZATCA QR code
+                          if (inv['zatca_qr'] != null && inv['zatca_qr'].toString().isNotEmpty) ...[
+                            BarcodeWidget(
+                              barcode: Barcode.qrCode(),
+                              data: inv['zatca_qr'].toString(),
+                              width: 120,
+                              height: 120,
+                            ),
+                            const SizedBox(height: 6),
+                            Text('ZATCA / Tax E-Invoice', style: TextStyle(fontSize: 10, color: AppTheme.textMuted, fontWeight: FontWeight.bold)),
+                          ] else ...[
+                            BarcodeWidget(
+                              barcode: Barcode.code128(),
+                              data: invoiceNo,
+                              width: 200,
+                              height: 50,
+                              drawText: false,
+                            ),
+                            const SizedBox(height: 4),
+                            Text(invoiceNo, style: TextStyle(fontSize: 10, color: AppTheme.textMuted, letterSpacing: 1)),
+                          ],
                           const SizedBox(height: 12),
 
                           // Footer

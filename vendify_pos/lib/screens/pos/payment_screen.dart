@@ -9,6 +9,7 @@ import 'package:vendify_pos/models/cart_item.dart';
 import 'package:vendify_pos/services/pos_service.dart';
 import 'package:vendify_pos/screens/pos/pos_layout_router.dart';
 import 'package:vendify_pos/screens/pos/widgets/receipt_preview.dart';
+import 'package:vendify_pos/providers/sync_provider.dart';
 
 class PaymentScreen extends ConsumerStatefulWidget {
   final List<CartItem> cartItems;
@@ -21,6 +22,9 @@ class PaymentScreen extends ConsumerStatefulWidget {
   final int locationId;
   final double rpDiscount;
   final int rpPointsRedeemed;
+  final int? staffId;
+  final String? staffName;
+  final int? appointmentId;
 
   const PaymentScreen({
     super.key,
@@ -34,6 +38,9 @@ class PaymentScreen extends ConsumerStatefulWidget {
     required this.locationId,
     this.rpDiscount = 0.0,
     this.rpPointsRedeemed = 0,
+    this.staffId,
+    this.staffName,
+    this.appointmentId,
   });
 
   @override
@@ -65,6 +72,10 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
   static const Map<String, Map<String, dynamic>> _allPaymentMethods = {
     'cash': {'label': 'Cash', 'icon': Icons.money, 'requiresAuth': false},
     'card': {'label': 'Debit Card', 'icon': Icons.credit_card, 'requiresAuth': true},
+    'knet': {'label': 'K-NET', 'icon': Icons.credit_card, 'requiresAuth': true},
+    'mada': {'label': 'Mada', 'icon': Icons.credit_card, 'requiresAuth': true},
+    'apple_pay': {'label': 'Apple Pay', 'icon': Icons.contactless, 'requiresAuth': true},
+    'stc_pay': {'label': 'STC Pay', 'icon': Icons.phone_android, 'requiresAuth': false},
     'visa': {'label': 'Visa', 'icon': Icons.credit_card, 'requiresAuth': true},
     'mastercard': {'label': 'Mastercard', 'icon': Icons.credit_card, 'requiresAuth': true},
     'amex': {'label': 'Amex', 'icon': Icons.credit_card, 'requiresAuth': true},
@@ -76,10 +87,19 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
     'custom_pay_3': {'label': 'Custom Pay 3', 'icon': Icons.payment, 'requiresAuth': false},
   };
 
+  // Staff Tip (Scenario 2)
+  double _tipAmount = 0.0;
+  int? _tipStaffId;
+  String? _tipStaffName;
+  List<Map<String, dynamic>> _staffList = [];
+  final _customTipController = TextEditingController();
+  bool _isCustomTip = false;
+
+  double get _payableTotal => widget.grandTotal + _tipAmount;
   double get _totalPaid => _payments.fold(0, (sum, p) => sum + p.amount);
-  double get _remaining => widget.grandTotal - _totalPaid;
-  double get _change => _totalPaid > widget.grandTotal ? _totalPaid - widget.grandTotal : 0;
-  bool get _isFullyPaid => _totalPaid >= widget.grandTotal - 0.001;
+  double get _remaining => _payableTotal - _totalPaid;
+  double get _change => _totalPaid > _payableTotal ? _totalPaid - _payableTotal : 0;
+  bool get _isFullyPaid => _totalPaid >= _payableTotal - 0.001;
   bool get _selectedMethodRequiresAuth {
     final method = _paymentMethods.firstWhere(
       (m) => m['method'] == _selectedMethod,
@@ -91,8 +111,11 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
   @override
   void initState() {
     super.initState();
-    _amountController.text = widget.grandTotal.toStringAsFixed(3);
+    _tipStaffId = widget.staffId;
+    _tipStaffName = widget.staffName;
+    _amountController.text = _payableTotal.toStringAsFixed(3);
     _loadPosSettings();
+    _loadStaffList();
   }
 
   @override
@@ -100,7 +123,23 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
     _amountController.dispose();
     _referenceController.dispose();
     _authCodeController.dispose();
+    _customTipController.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadStaffList() async {
+    try {
+      final list = await _posService.getSaloonStaff();
+      if (mounted) {
+        setState(() {
+          _staffList = list;
+          if (_tipStaffId != null && _tipStaffName == null) {
+            final match = list.firstWhere((s) => s['id'] == _tipStaffId, orElse: () => {});
+            _tipStaffName = match['name'];
+          }
+        });
+      }
+    } catch (_) {}
   }
 
   /// Fetch POS settings from Laravel backend
@@ -143,10 +182,13 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
               };
             }).where((m) => m['skip'] != true).toList();
           } else {
-            // Fallback: show cash and card
+            // Fallback: show cash, card, and GCC methods
             _paymentMethods = [
               {'method': 'cash', 'label': 'Cash', 'icon': Icons.money, 'requiresAuth': false},
               {'method': 'card', 'label': 'Debit Card', 'icon': Icons.credit_card, 'requiresAuth': true},
+              {'method': 'knet', 'label': 'K-NET', 'icon': Icons.credit_card, 'requiresAuth': true},
+              {'method': 'mada', 'label': 'Mada', 'icon': Icons.credit_card, 'requiresAuth': true},
+              {'method': 'apple_pay', 'label': 'Apple Pay', 'icon': Icons.contactless, 'requiresAuth': true},
             ];
           }
 
@@ -168,6 +210,9 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
           _paymentMethods = [
             {'method': 'cash', 'label': 'Cash', 'icon': Icons.money, 'requiresAuth': false},
             {'method': 'card', 'label': 'Debit Card', 'icon': Icons.credit_card, 'requiresAuth': true},
+            {'method': 'knet', 'label': 'K-NET', 'icon': Icons.credit_card, 'requiresAuth': true},
+            {'method': 'mada', 'label': 'Mada', 'icon': Icons.credit_card, 'requiresAuth': true},
+            {'method': 'apple_pay', 'label': 'Apple Pay', 'icon': Icons.contactless, 'requiresAuth': true},
           ];
           _isLoadingSettings = false;
         });
@@ -184,7 +229,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
 
     // Allow overpayment for cash (customer gives larger note, gets change back)
     // Don't allow overpayment for card/other methods
-    if (_selectedMethod != 'cash' && _totalPaid + amount > widget.grandTotal + 0.001) {
+    if (_selectedMethod != 'cash' && _totalPaid + amount > _payableTotal + 0.001) {
       _showError('Amount exceeds remaining balance');
       return;
     }
@@ -262,13 +307,26 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
         subtotal: widget.subtotal,
         tax: widget.tax,
         discount: widget.discount,
-        grandTotal: widget.grandTotal,
+        grandTotal: _payableTotal,
         payments: paymentLines,
         rpRedeemAmount: widget.rpDiscount,
         rpRedeemed: widget.rpPointsRedeemed,
+        tipAmount: _tipAmount > 0 ? _tipAmount : null,
+        tipStaffId: _tipStaffId,
+        appointmentId: widget.appointmentId,
+        resWaiterId: _tipStaffId,
       );
 
       if (result['success'] == true) {
+        if (result['offline'] == true) {
+          ref.read(syncProvider.notifier).refreshQueue();
+        }
+
+        final invoiceNo = result['invoice_number']?.toString() ??
+            (result['data'] is Map ? result['data']['invoice_no']?.toString() : null) ??
+            result['local_id']?.toString() ??
+            DateTime.now().millisecondsSinceEpoch.toString();
+
         if (mounted) {
           // Show receipt preview
           if (mounted) {
@@ -279,16 +337,19 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
               context: context,
               barrierDismissible: false,
               builder: (ctx) => ReceiptPreview(
-                invoiceNumber: result['invoice_number']?.toString() ?? DateTime.now().millisecondsSinceEpoch.toString(),
+                invoiceNumber: invoiceNo,
                 cartItems: widget.cartItems,
                 subtotal: widget.subtotal,
                 tax: widget.tax,
                 discount: widget.discount,
-                grandTotal: widget.grandTotal,
+                grandTotal: _payableTotal,
                 payments: paymentLines,
                 change: _change,
                 customerName: widget.customerName,
                 businessType: businessType,
+                zatcaQr: result['zatca_qr']?.toString(),
+                tipAmount: _tipAmount > 0 ? _tipAmount : null,
+                tipStaffName: _tipStaffName,
               ),
             ).then((_) {
               // After receipt is closed, go back to POS
@@ -309,7 +370,8 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
       String errorMsg = 'An unexpected error occurred';
       
       if (e is DioException && e.response != null) {
-        final data = e.response!.data;
+        final resp = e.response!;
+        final data = resp.data;
         if (data is Map) {
           if (data['errors'] != null) {
             final errors = data['errors'] as Map;
@@ -319,12 +381,12 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
                 messages.addAll(fieldErrors.map((e) => '$field: $e'));
               }
             });
-            errorMsg = messages.isNotEmpty ? messages.join('\n') : (data['message'] ?? 'Validation error');
+            errorMsg = messages.isNotEmpty ? messages.join('\n') : (data['message']?.toString() ?? 'Validation error');
           } else {
-            errorMsg = data['message'] ?? 'Error ${e.response!.statusCode}';
+            errorMsg = data['message']?.toString() ?? 'Error ${resp.statusCode}';
           }
         } else {
-          errorMsg = 'Server error: ${e.response!.statusCode}';
+          errorMsg = 'Server error: ${resp.statusCode}';
         }
       } else if (e is DioException) {
         errorMsg = 'Network error: ${e.message}';
@@ -361,7 +423,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
             padding: const EdgeInsets.only(right: 16),
             child: Center(
               child: Text(
-                '$_currencySymbol ${widget.grandTotal.toStringAsFixed(3)}',
+                '$_currencySymbol ${_payableTotal.toStringAsFixed(3)}',
                 style: const TextStyle(
                   color: AppTheme.primary,
                   fontSize: 18,
@@ -430,7 +492,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(item.productName, style: const TextStyle(color: AppTheme.textPrimary, fontSize: 12, fontWeight: FontWeight.w500), maxLines: 1, overflow: TextOverflow.ellipsis),
-                            Text('$_currencySymbol ${item.unitPrice.toStringAsFixed(3)} x ${item.quantity.toInt()}', style: TextStyle(color: AppTheme.textSecondary, fontSize: 11)),
+                            Text('$_currencySymbol ${item.unitPrice.toStringAsFixed(3)} x ${item.quantity.truncateToDouble() == item.quantity ? item.quantity.toInt() : item.quantity.toStringAsFixed(2)}', style: TextStyle(color: AppTheme.textSecondary, fontSize: 11)),
                           ],
                         ),
                       ),
@@ -449,17 +511,158 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
           _buildSummaryRow('Subtotal', '$_currencySymbol ${widget.subtotal.toStringAsFixed(3)}'),
           if (widget.tax > 0) _buildSummaryRow('Tax', '$_currencySymbol ${widget.tax.toStringAsFixed(3)}'),
           if (widget.discount > 0) _buildSummaryRow('Discount', '- $_currencySymbol ${widget.discount.toStringAsFixed(3)}', isNegative: true),
+          if (_tipAmount > 0)
+            _buildSummaryRow('Staff Tip (${_tipStaffName ?? "Staff"})', '+ $_currencySymbol ${_tipAmount.toStringAsFixed(3)}'),
           const SizedBox(height: 8),
           const Divider(color: AppTheme.border),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               const Text('TOTAL', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppTheme.textPrimary)),
-              Text('$_currencySymbol ${widget.grandTotal.toStringAsFixed(3)}', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppTheme.primary)),
+              Text('$_currencySymbol ${_payableTotal.toStringAsFixed(3)}', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppTheme.primary)),
             ],
           ),
         ],
       ),
+    );
+  }
+
+  void _setTip(double amount, {bool isCustom = false}) {
+    setState(() {
+      _tipAmount = amount;
+      _isCustomTip = isCustom;
+      _amountController.text = _remaining > 0 ? _remaining.toStringAsFixed(3) : '0.000';
+    });
+  }
+
+  Widget _buildTipSection() {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFF9800).withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+        border: Border.all(color: const Color(0xFFFF9800).withValues(alpha: 0.25)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.volunteer_activism, size: 18, color: Color(0xFFFF9800)),
+                  const SizedBox(width: 8),
+                  const Text('Staff Tip', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppTheme.textPrimary)),
+                  if (_tipAmount > 0) ...[
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(color: const Color(0xFFFF9800).withValues(alpha: 0.2), borderRadius: BorderRadius.circular(4)),
+                      child: Text('+$_currencySymbol ${_tipAmount.toStringAsFixed(3)}', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFFFF9800))),
+                    ),
+                  ],
+                ],
+              ),
+              if (_staffList.isNotEmpty)
+                DropdownButtonHideUnderline(
+                  child: DropdownButton<int>(
+                    value: _tipStaffId,
+                    hint: const Text('Assign Stylist', style: TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
+                    dropdownColor: AppTheme.surface,
+                    style: const TextStyle(fontSize: 12, color: AppTheme.textPrimary),
+                    items: _staffList.map((s) => DropdownMenuItem<int>(
+                      value: s['id'] as int,
+                      child: Text(s['name'] ?? 'Staff', style: const TextStyle(fontSize: 12)),
+                    )).toList(),
+                    onChanged: (id) {
+                      final match = _staffList.firstWhere((s) => s['id'] == id, orElse: () => {});
+                      setState(() {
+                        _tipStaffId = id;
+                        _tipStaffName = match['name'];
+                      });
+                    },
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              _buildTipChip(0, 'No Tip'),
+              _buildTipChip(0.500, '+ 0.500'),
+              _buildTipChip(1.000, '+ 1.000'),
+              _buildTipChip(2.000, '+ 2.000'),
+              _buildTipChip(5.000, '+ 5.000'),
+              _buildCustomTipChip(),
+            ],
+          ),
+          if (_isCustomTip) ...[
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: SizedBox(
+                    height: 38,
+                    child: TextField(
+                      controller: _customTipController,
+                      keyboardType: TextInputType.number,
+                      inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,3}'))],
+                      style: const TextStyle(fontSize: 13, color: AppTheme.textPrimary),
+                      decoration: InputDecoration(
+                        prefixText: '$_currencySymbol ',
+                        hintText: 'Enter custom tip amount',
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                        filled: true,
+                        fillColor: AppTheme.background,
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(6), borderSide: const BorderSide(color: AppTheme.border)),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                ElevatedButton(
+                  onPressed: () {
+                    final val = double.tryParse(_customTipController.text.trim()) ?? 0;
+                    _setTip(val, isCustom: true);
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFFFF9800),
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  ),
+                  child: const Text('Apply', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTipChip(double amount, String label) {
+    final isSelected = !_isCustomTip && (_tipAmount == amount);
+    return ChoiceChip(
+      label: Text(label, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: isSelected ? Colors.white : AppTheme.textPrimary)),
+      selected: isSelected,
+      selectedColor: const Color(0xFFFF9800),
+      backgroundColor: AppTheme.background,
+      onSelected: (_) => _setTip(amount),
+    );
+  }
+
+  Widget _buildCustomTipChip() {
+    return ChoiceChip(
+      label: Text(_isCustomTip ? 'Custom (${_tipAmount.toStringAsFixed(3)})' : 'Custom', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: _isCustomTip ? Colors.white : AppTheme.textPrimary)),
+      selected: _isCustomTip,
+      selectedColor: const Color(0xFFFF9800),
+      backgroundColor: AppTheme.background,
+      onSelected: (_) {
+        setState(() => _isCustomTip = !_isCustomTip);
+      },
     );
   }
 
@@ -469,6 +672,9 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          // Staff Tip Section (Scenario 2)
+          _buildTipSection(),
+          const SizedBox(height: 16),
           // Section Title
           const Text('Payment Method', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppTheme.textPrimary)),
           const SizedBox(height: 12),

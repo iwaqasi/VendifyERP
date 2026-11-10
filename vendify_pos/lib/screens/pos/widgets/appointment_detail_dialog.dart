@@ -7,11 +7,17 @@ class AppointmentCompleteResult {
   final List<CartItemData> services;
   final String customerName;
   final int? contactId;
+  final int? staffId;
+  final String? staffName;
+  final int? appointmentId;
 
   AppointmentCompleteResult({
     required this.services,
     required this.customerName,
     this.contactId,
+    this.staffId,
+    this.staffName,
+    this.appointmentId,
   });
 }
 
@@ -23,12 +29,22 @@ class CartItemData {
   CartItemData({required this.name, required this.price, required this.durationMinutes});
 }
 
-/// Shows appointment details with status management.
-/// When completed, services are added to the POS cart for payment.
+class _ServiceItem {
+  String name;
+  double price;
+  int durationMinutes;
+
+  _ServiceItem({required this.name, required this.price, required this.durationMinutes});
+}
+
+/// Shows appointment details with status and dynamic service management.
+/// Supports adding/removing services mid-appointment (Scenario 1).
+/// When completed, all services are loaded into the POS cart with staff attribution.
 class AppointmentDetailDialog extends StatefulWidget {
   final Map<String, dynamic> appointment;
   final PosService posService;
   final List<Map<String, dynamic>> staff;
+  final List<Map<String, dynamic>> availableServices;
   final Function(AppointmentCompleteResult) onComplete;
   final VoidCallback onStatusChanged;
 
@@ -37,6 +53,7 @@ class AppointmentDetailDialog extends StatefulWidget {
     required this.appointment,
     required this.posService,
     this.staff = const [],
+    this.availableServices = const [],
     required this.onComplete,
     required this.onStatusChanged,
   });
@@ -46,6 +63,7 @@ class AppointmentDetailDialog extends StatefulWidget {
     required Map<String, dynamic> appointment,
     required PosService posService,
     List<Map<String, dynamic>> staff = const [],
+    List<Map<String, dynamic>> availableServices = const [],
     required Function(AppointmentCompleteResult) onComplete,
     required VoidCallback onStatusChanged,
   }) {
@@ -55,6 +73,7 @@ class AppointmentDetailDialog extends StatefulWidget {
         appointment: appointment,
         posService: posService,
         staff: staff,
+        availableServices: availableServices,
         onComplete: onComplete,
         onStatusChanged: onStatusChanged,
       ),
@@ -68,6 +87,8 @@ class AppointmentDetailDialog extends StatefulWidget {
 class _AppointmentDetailDialogState extends State<AppointmentDetailDialog> {
   late String _status;
   bool _isUpdating = false;
+  bool _isSavingServices = false;
+  late List<_ServiceItem> _services;
 
   Map<String, dynamic> get _appt => widget.appointment;
 
@@ -75,6 +96,41 @@ class _AppointmentDetailDialogState extends State<AppointmentDetailDialog> {
   void initState() {
     super.initState();
     _status = _appt['status'] ?? 'scheduled';
+    _initServices();
+  }
+
+  void _initServices() {
+    final rawName = (_appt['service'] ?? '').toString();
+    final names = rawName.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
+
+    final totalPrice = _parsePrice(_appt['price']);
+    final totalDuration = (_appt['duration'] is int) ? _appt['duration'] as int : int.tryParse('${_appt['duration']}') ?? 30;
+
+    if (names.isEmpty) {
+      _services = [
+        _ServiceItem(
+          name: 'General Service',
+          price: totalPrice > 0 ? totalPrice : 0,
+          durationMinutes: totalDuration > 0 ? totalDuration : 30,
+        )
+      ];
+    } else {
+      final unitPrice = names.isNotEmpty ? (totalPrice / names.length) : totalPrice;
+      final unitDuration = names.isNotEmpty ? (totalDuration / names.length).round() : totalDuration;
+
+      _services = names.map((n) => _ServiceItem(
+        name: n,
+        price: unitPrice,
+        durationMinutes: unitDuration > 0 ? unitDuration : 30,
+      )).toList();
+    }
+  }
+
+  double _parsePrice(dynamic p) {
+    if (p is double) return p;
+    if (p is int) return p.toDouble();
+    if (p is String) return double.tryParse(p) ?? 0;
+    return 0;
   }
 
   Color get _statusColor {
@@ -109,21 +165,163 @@ class _AppointmentDetailDialogState extends State<AppointmentDetailDialog> {
     }
   }
 
-  List<String> get _serviceNames {
-    final name = (_appt['service'] ?? '').toString();
-    return name.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
+  double get _totalPrice => _services.fold(0, (sum, s) => sum + s.price);
+  int get _totalDuration => _services.fold(0, (sum, s) => sum + s.durationMinutes);
+
+  Future<void> _syncServicesToBackend() async {
+    final id = _appt['id'];
+    if (id == null) return;
+
+    setState(() => _isSavingServices = true);
+    try {
+      final payload = {
+        'services': _services.map((s) => {
+          'name': s.name,
+          'price': s.price,
+          'duration_minutes': s.durationMinutes,
+        }).toList(),
+      };
+      await widget.posService.updateAppointmentServices(id, payload);
+      widget.onStatusChanged();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to update services: $e'), backgroundColor: AppTheme.error),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isSavingServices = false);
+    }
   }
 
-  double get _totalPrice {
-    final p = _appt['price'] ?? 0;
-    if (p is double) return p;
-    if (p is int) return p.toDouble();
-    if (p is String) return double.tryParse(p) ?? 0;
-    return 0;
+  void _addServiceToAppointment(Map<String, dynamic> svc) async {
+    final name = (svc['name'] ?? svc['service_name'] ?? '').toString();
+    final price = _parsePrice(svc['price'] ?? svc['sell_price_inc_tax'] ?? 0);
+    final duration = (svc['duration'] ?? svc['service_duration_minutes'] ?? 30) as int;
+
+    // Check duplicate
+    if (_services.any((s) => s.name.toLowerCase() == name.toLowerCase())) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('$name is already in this appointment'), backgroundColor: AppTheme.warning),
+      );
+      return;
+    }
+
+    setState(() {
+      _services.add(_ServiceItem(
+        name: name,
+        price: price,
+        durationMinutes: duration,
+      ));
+    });
+
+    await _syncServicesToBackend();
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Added "$name" to appointment'),
+          backgroundColor: AppTheme.success,
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
   }
 
-  int get _totalDuration {
-    return (_appt['duration'] ?? 30);
+  void _removeService(int index) async {
+    if (_services.length <= 1) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Appointment must have at least one service'), backgroundColor: AppTheme.warning),
+      );
+      return;
+    }
+
+    final removed = _services[index].name;
+    setState(() {
+      _services.removeAt(index);
+    });
+
+    await _syncServicesToBackend();
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Removed "$removed"'), backgroundColor: AppTheme.info, duration: const Duration(seconds: 1)),
+      );
+    }
+  }
+
+  void _showAddServiceSheet() {
+    final available = widget.availableServices;
+    if (available.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No catalog services available to add'), backgroundColor: AppTheme.warning),
+      );
+      return;
+    }
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppTheme.surface,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
+      builder: (ctx) {
+        return Container(
+          padding: const EdgeInsets.all(16),
+          constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.6),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text('Select Add-on Service', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppTheme.textPrimary)),
+                  IconButton(icon: const Icon(Icons.close, size: 20), onPressed: () => Navigator.pop(ctx)),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Expanded(
+                child: ListView.separated(
+                  itemCount: available.length,
+                  separatorBuilder: (_, __) => const Divider(height: 1, color: AppTheme.border),
+                  itemBuilder: (ctx, i) {
+                    final s = available[i];
+                    final name = (s['name'] ?? '').toString();
+                    final price = _parsePrice(s['price'] ?? s['sell_price_inc_tax'] ?? 0);
+                    final dur = s['duration'] ?? 30;
+
+                    final isAlreadyAdded = _services.any((item) => item.name.toLowerCase() == name.toLowerCase());
+
+                    return ListTile(
+                      dense: true,
+                      leading: Container(
+                        width: 34, height: 34,
+                        decoration: BoxDecoration(color: const Color(0xFFE91E63).withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
+                        child: const Icon(Icons.spa, color: Color(0xFFE91E63), size: 18),
+                      ),
+                      title: Text(name, style: TextStyle(fontWeight: FontWeight.w600, color: isAlreadyAdded ? AppTheme.textMuted : AppTheme.textPrimary)),
+                      subtitle: Text('$dur min', style: const TextStyle(fontSize: 11, color: AppTheme.textSecondary)),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text('KD ${price.toStringAsFixed(3)}', style: const TextStyle(fontWeight: FontWeight.bold, color: AppTheme.primary, fontSize: 13)),
+                          const SizedBox(width: 8),
+                          isAlreadyAdded
+                              ? const Icon(Icons.check_circle, color: AppTheme.success, size: 18)
+                              : const Icon(Icons.add_circle_outline, color: AppTheme.primary, size: 20),
+                        ],
+                      ),
+                      onTap: isAlreadyAdded ? null : () {
+                        Navigator.pop(ctx);
+                        _addServiceToAppointment(s);
+                      },
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
   }
 
   Future<void> _updateStatus(String newStatus) async {
@@ -149,29 +347,28 @@ class _AppointmentDetailDialogState extends State<AppointmentDetailDialog> {
   }
 
   void _completeAndAddToCart() {
-    // Build services list for the cart
-    final services = _serviceNames.map((name) {
-      // Distribute price equally among services
-      final pricePerService = _serviceNames.isNotEmpty
-          ? _totalPrice / _serviceNames.length
-          : _totalPrice.toDouble();
-      return CartItemData(
-        name: name,
-        price: pricePerService,
-        durationMinutes: _serviceNames.isNotEmpty
-            ? (_totalDuration / _serviceNames.length).round()
-            : _totalDuration,
-      );
-    }).toList();
+    // Build cart items for all current services (including add-ons)
+    final cartItems = _services.map((s) => CartItemData(
+      name: s.name,
+      price: s.price,
+      durationMinutes: s.durationMinutes,
+    )).toList();
 
     // Mark as completed
     _updateStatus('completed');
 
-    // Return result to add to cart
+    // Extract staff info
+    int? staffId = _appt['staff_id'];
+    String? staffName = (_appt['staff'] ?? '').toString();
+
+    // Return result with staff & appointment attribution
     widget.onComplete(AppointmentCompleteResult(
-      services: services,
+      services: cartItems,
       customerName: _appt['customerName'] ?? 'Walk-in Customer',
       contactId: _appt['contactId'],
+      staffId: staffId,
+      staffName: staffName.isNotEmpty ? staffName : null,
+      appointmentId: _appt['id'],
     ));
 
     Navigator.of(context).pop();
@@ -183,8 +380,8 @@ class _AppointmentDetailDialogState extends State<AppointmentDetailDialog> {
       backgroundColor: AppTheme.surface,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: Container(
-        width: 440,
-        constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.8),
+        width: 480,
+        constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.85),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -222,10 +419,20 @@ class _AppointmentDetailDialogState extends State<AppointmentDetailDialog> {
                   style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppTheme.textPrimary),
                 ),
                 const SizedBox(height: 2),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                  decoration: BoxDecoration(color: _statusColor.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(4)),
-                  child: Text(_statusLabel, style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _statusColor)),
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                      decoration: BoxDecoration(color: _statusColor.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(4)),
+                      child: Text(_statusLabel, style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: _statusColor)),
+                    ),
+                    if (_isSavingServices) ...[
+                      const SizedBox(width: 8),
+                      const SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 1.5)),
+                      const SizedBox(width: 4),
+                      const Text('Saving...', style: TextStyle(fontSize: 10, color: AppTheme.textMuted)),
+                    ],
+                  ],
                 ),
               ],
             ),
@@ -240,69 +447,121 @@ class _AppointmentDetailDialogState extends State<AppointmentDetailDialog> {
   }
 
   Widget _buildContent() {
+    final canModifyServices = _status != 'completed' && _status != 'finished' && _status != 'cancelled';
+
     return SingleChildScrollView(
       padding: const EdgeInsets.all(20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Time & Duration
-          _buildInfoRow(Icons.access_time, 'Time', '${_appt['time'] ?? 'N/A'}  •  $_totalDuration min'),
-          const SizedBox(height: 14),
-
-          // Services
-          _buildSectionTitle('Services'),
-          const SizedBox(height: 8),
-          ..._serviceNames.map((name) => Container(
-            margin: const EdgeInsets.only(bottom: 6),
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(color: AppTheme.background, borderRadius: BorderRadius.circular(8)),
-            child: Row(
-              children: [
-                Container(
-                  width: 28, height: 28,
-                  decoration: BoxDecoration(color: const Color(0xFFE91E63).withValues(alpha: 0.1), borderRadius: BorderRadius.circular(6)),
-                  child: const Icon(Icons.spa, size: 14, color: Color(0xFFE91E63)),
-                ),
-                const SizedBox(width: 10),
-                Expanded(child: Text(name, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: AppTheme.textPrimary))),
-                if (_serviceNames.length > 1)
-                  Text('KD ${(_totalPrice / _serviceNames.length).toStringAsFixed(3)}', style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
-              ],
-            ),
-          )),
-
-          // Total price
-          if (_totalPrice > 0) ...[
-            const SizedBox(height: 8),
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(color: AppTheme.primary.withValues(alpha: 0.05), borderRadius: BorderRadius.circular(8)),
-              child: Row(
-                children: [
-                  const Icon(Icons.receipt_long, size: 16, color: AppTheme.primary),
-                  const SizedBox(width: 8),
-                  const Text('Total', style: TextStyle(fontSize: 13, color: AppTheme.textSecondary)),
-                  const Spacer(),
-                  Text('KD ${_totalPrice.toStringAsFixed(3)}', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppTheme.primary)),
-                ],
-              ),
-            ),
-          ],
+          // Time & Total Duration
+          _buildInfoRow(Icons.access_time, 'Time', '${_appt['time'] ?? 'N/A'}  •  $_totalDuration min total'),
           const SizedBox(height: 14),
 
           // Staff
-          if (_appt['staff'] != null && (_appt['staff'] ?? '').toString().isNotEmpty)
-            _buildInfoRow(Icons.person, 'Staff', (_appt['staff'] ?? '').toString()),
+          if (_appt['staff'] != null && (_appt['staff'] ?? '').toString().isNotEmpty) ...[
+            _buildInfoRow(Icons.person, 'Stylist', (_appt['staff'] ?? '').toString()),
+            const SizedBox(height: 14),
+          ],
+
+          // Services Section with Dynamic Add-ons (Scenario 1)
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              _buildSectionTitle('Services (${_services.length})'),
+              if (canModifyServices && widget.availableServices.isNotEmpty)
+                InkWell(
+                  onTap: _showAddServiceSheet,
+                  borderRadius: BorderRadius.circular(6),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFE91E63).withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: const Color(0xFFE91E63).withValues(alpha: 0.3)),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.add, size: 14, color: Color(0xFFE91E63)),
+                        SizedBox(width: 4),
+                        Text('Add-on Service', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFFE91E63))),
+                      ],
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 8),
+
+          // Service Items List
+          ...List.generate(_services.length, (i) {
+            final s = _services[i];
+            return Container(
+              margin: const EdgeInsets.only(bottom: 6),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              decoration: BoxDecoration(color: AppTheme.background, borderRadius: BorderRadius.circular(8)),
+              child: Row(
+                children: [
+                  Container(
+                    width: 28, height: 28,
+                    decoration: BoxDecoration(color: const Color(0xFFE91E63).withValues(alpha: 0.1), borderRadius: BorderRadius.circular(6)),
+                    child: const Icon(Icons.spa, size: 14, color: Color(0xFFE91E63)),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(s.name, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: AppTheme.textPrimary)),
+                        Text('${s.durationMinutes} min', style: const TextStyle(fontSize: 11, color: AppTheme.textMuted)),
+                      ],
+                    ),
+                  ),
+                  Text('KD ${s.price.toStringAsFixed(3)}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.primary)),
+                  if (canModifyServices && _services.length > 1) ...[
+                    const SizedBox(width: 6),
+                    IconButton(
+                      icon: const Icon(Icons.close, size: 16, color: AppTheme.textMuted),
+                      splashRadius: 16,
+                      onPressed: () => _removeService(i),
+                      tooltip: 'Remove add-on',
+                    ),
+                  ],
+                ],
+              ),
+            );
+          }),
+
+          // Total Price Summary Box
+          const SizedBox(height: 8),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: AppTheme.primary.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: AppTheme.primary.withValues(alpha: 0.2)),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.receipt_long, size: 18, color: AppTheme.primary),
+                const SizedBox(width: 8),
+                Text('Total ($_totalDuration min)', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: AppTheme.textSecondary)),
+                const Spacer(),
+                Text('KD ${_totalPrice.toStringAsFixed(3)}', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppTheme.primary)),
+              ],
+            ),
+          ),
+          const SizedBox(height: 14),
 
           // Notes
           if (_appt['notes'] != null && (_appt['notes'] ?? '').toString().isNotEmpty) ...[
-            const SizedBox(height: 14),
             _buildInfoRow(Icons.note, 'Notes', (_appt['notes'] ?? '').toString()),
+            const SizedBox(height: 14),
           ],
 
-          // Timer (if in progress)
+          // Timer Banner (if in progress)
           if (_status == 'in_progress') ...[
-            const SizedBox(height: 14),
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
@@ -310,12 +569,12 @@ class _AppointmentDetailDialogState extends State<AppointmentDetailDialog> {
                 borderRadius: BorderRadius.circular(8),
                 border: Border.all(color: const Color(0xFFFF9800).withValues(alpha: 0.3)),
               ),
-              child: Row(
+              child: const Row(
                 children: [
-                  const Icon(Icons.timer, color: Color(0xFFFF9800), size: 20),
-                  const SizedBox(width: 10),
-                  const Text(
-                    'Service in progress',
+                  Icon(Icons.timer, color: Color(0xFFFF9800), size: 20),
+                  SizedBox(width: 10),
+                  Text(
+                    'Client is on the chair (Service in progress)',
                     style: TextStyle(fontWeight: FontWeight.w600, color: Color(0xFFFF9800), fontSize: 13),
                   ),
                 ],

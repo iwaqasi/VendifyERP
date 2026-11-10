@@ -3250,7 +3250,7 @@ class ReportController extends Controller
             $datatable->filterColumn(
                  'product',
                  function ($query, $keyword) {
-                     $query->whereRaw("IF(P.type='variable', CONCAT(P.name, ' - ', PV.name, ' - ', V.name, ' (', V.sub_sku, ')'), CONCAT(P.name, ' (', P.sku, ')')) LIKE '%{$keyword}%'");
+                     $query->whereRaw("IF(P.type='variable', CONCAT(P.name, ' - ', PV.name, ' - ', V.name, ' (', V.sub_sku, ')'), CONCAT(P.name, ' (', P.sku, ')')) LIKE ?", ["%{$keyword}%"]);
                  });
         }
         $raw_columns = ['gross_profit'];

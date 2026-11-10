@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Http\Requests\Api\V1\CreateAppointmentRequest;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -30,7 +31,7 @@ class SaloonController extends BaseApiController
      * Create a new appointment
      * POST /api/v1/saloon/appointments
      */
-    public function storeAppointment(Request $request): JsonResponse
+    public function storeAppointment(CreateAppointmentRequest $request): JsonResponse
     {
         $request->validate([
             'customer_name' => 'required|string',
@@ -285,5 +286,481 @@ class SaloonController extends BaseApiController
         return $this->successResponse([
             'duration_seconds' => $durationSeconds,
         ], 'Service completed');
+    }
+
+    /**
+     * Get staff commission report and calculations
+     * GET /api/v1/saloon/commissions
+     */
+    public function commissions(Request $request): JsonResponse
+    {
+        $business_id = $this->getBusinessId($request);
+        $startDate = $request->input('start_date', now()->startOfMonth()->toDateString());
+        $endDate = $request->input('end_date', now()->endOfMonth()->toDateString());
+        $staffId = $request->input('staff_id');
+
+        $staffQuery = \App\User::where('business_id', $business_id)
+            ->where('status', 'active');
+
+        if ($staffId) {
+            $staffQuery->where('id', $staffId);
+        } else {
+            $staffQuery->where(function ($q) use ($business_id) {
+                $q->where('is_cmmsn_agnt', 1)
+                  ->orWhere('cmmsn_percent', '>', 0)
+                  ->orWhereHas('roles', function ($rq) use ($business_id) {
+                      $rq->where('name', 'LIKE', 'Service Staff#' . $business_id)
+                        ->orWhere('name', 'service_staff');
+                  });
+            });
+        }
+
+        $staffMembers = $staffQuery->get();
+
+        $results = [];
+        $totalBusinessCommission = 0;
+        $totalBusinessServiceRevenue = 0;
+
+        foreach ($staffMembers as $staff) {
+            $rate = (float) ($staff->cmmsn_percent ?? 0);
+
+            $lines = DB::table('transaction_sell_lines as sl')
+                ->join('transactions as t', 'sl.transaction_id', '=', 't.id')
+                ->leftJoin('products as p', 'sl.product_id', '=', 'p.id')
+                ->where('t.business_id', $business_id)
+                ->where('t.type', 'sell')
+                ->where('t.status', 'final')
+                ->where(function ($q) use ($staff) {
+                    $q->where('sl.res_service_staff_id', $staff->id)
+                      ->orWhere('t.commission_agent', $staff->id);
+                })
+                ->whereDate('t.transaction_date', '>=', $startDate)
+                ->whereDate('t.transaction_date', '<=', $endDate)
+                ->select([
+                    'sl.id',
+                    'sl.transaction_id',
+                    't.invoice_no',
+                    't.transaction_date',
+                    'sl.quantity',
+                    'sl.unit_price_inc_tax',
+                    'p.name as product_name',
+                ])
+                ->get();
+
+            $staffRevenue = 0;
+            $serviceItems = [];
+
+            foreach ($lines as $l) {
+                $lineTotal = (float) $l->quantity * (float) $l->unit_price_inc_tax;
+                $staffRevenue += $lineTotal;
+                $serviceItems[] = [
+                    'line_id'          => $l->id,
+                    'invoice_no'       => $l->invoice_no,
+                    'date'             => $l->transaction_date,
+                    'service_name'     => $l->product_name ?? 'Service',
+                    'quantity'         => (float) $l->quantity,
+                    'unit_price'       => (float) $l->unit_price_inc_tax,
+                    'total'            => (float) $lineTotal,
+                    'line_commission'  => round($lineTotal * ($rate / 100), 3),
+                ];
+            }
+
+            $commissionEarned = round($staffRevenue * ($rate / 100), 3);
+            $totalBusinessCommission += $commissionEarned;
+            $totalBusinessServiceRevenue += $staffRevenue;
+
+            $results[] = [
+                'staff_id'           => $staff->id,
+                'staff_name'         => trim($staff->first_name . ' ' . $staff->last_name),
+                'commission_percent' => $rate,
+                'total_services'     => $lines->count(),
+                'total_revenue'      => round($staffRevenue, 3),
+                'commission_earned'  => $commissionEarned,
+                'services'           => $serviceItems,
+            ];
+        }
+
+        return $this->successResponse([
+            'start_date'                 => $startDate,
+            'end_date'                   => $endDate,
+            'total_business_revenue'     => round($totalBusinessServiceRevenue, 3),
+            'total_business_commission'  => round($totalBusinessCommission, 3),
+            'staff_commissions'          => $results,
+        ]);
+    }
+
+    /**
+     * Update appointment services (Scenario 1: add-ons mid appointment)
+     * PUT /api/v1/saloon/appointments/{id}/services
+     */
+    public function updateAppointmentServices(Request $request, int $id): JsonResponse
+    {
+        $business_id = $this->getBusinessId($request);
+
+        $appointment = DB::table('pos_appointments')
+            ->where('id', $id)
+            ->where('business_id', $business_id)
+            ->first();
+
+        if (!$appointment) {
+            return $this->errorResponse('Appointment not found', 404);
+        }
+
+        $request->validate([
+            'services'                  => 'nullable|array',
+            'services.*.name'           => 'required_with:services|string',
+            'services.*.price'          => 'nullable|numeric|min:0',
+            'services.*.duration_minutes' => 'nullable|integer|min:1',
+            'service_name'              => 'nullable|string',
+            'service_price'             => 'nullable|numeric|min:0',
+            'service_duration_minutes'  => 'nullable|integer|min:1',
+        ]);
+
+        if ($request->has('services') && is_array($request->input('services'))) {
+            $services = $request->input('services');
+            $serviceNames = implode(', ', array_map(fn($s) => $s['name'], $services));
+            $servicePrice = array_sum(array_map(fn($s) => (float)($s['price'] ?? 0), $services));
+            $durationMinutes = array_sum(array_map(fn($s) => (int)($s['duration_minutes'] ?? 30), $services));
+        } else {
+            $serviceNames = $request->input('service_name', $appointment->service_name);
+            $servicePrice = $request->input('service_price', $appointment->service_price);
+            $durationMinutes = $request->input('service_duration_minutes', $appointment->service_duration_minutes);
+        }
+
+        $startTime = \Carbon\Carbon::parse($appointment->appointment_start);
+        $endTime = $startTime->copy()->addMinutes($durationMinutes);
+
+        DB::table('pos_appointments')
+            ->where('id', $id)
+            ->where('business_id', $business_id)
+            ->update([
+                'service_name'             => $serviceNames,
+                'service_price'            => $servicePrice,
+                'service_duration_minutes' => $durationMinutes,
+                'appointment_end'          => $endTime,
+                'updated_at'               => now(),
+            ]);
+
+        // Also update matching booking
+        $serviceNote = $serviceNames . ' (KD ' . number_format((float)$servicePrice, 3) . ')';
+        if (!empty($appointment->notes)) {
+            $serviceNote .= ' — ' . $appointment->notes;
+        }
+
+        DB::table('bookings')
+            ->where('business_id', $business_id)
+            ->where('contact_id', $appointment->contact_id)
+            ->where('booking_start', $appointment->appointment_start)
+            ->update([
+                'booking_note' => $serviceNote,
+                'booking_end'  => $endTime,
+                'updated_at'   => now(),
+            ]);
+
+        $updated = DB::table('pos_appointments')->where('id', $id)->first();
+
+        return $this->successResponse([
+            'appointment' => $updated,
+        ], 'Services updated successfully');
+    }
+
+    /**
+     * Get staff tips and payout summary (Scenario 2)
+     * GET /api/v1/saloon/tips
+     */
+    public function tips(Request $request): JsonResponse
+    {
+        $business_id = $this->getBusinessId($request);
+        $startDate = $request->input('start_date', now()->startOfMonth()->toDateString());
+        $endDate = $request->input('end_date', now()->endOfMonth()->toDateString());
+        $staffId = $request->input('staff_id');
+        $status = $request->input('status'); // 'all', 'pending', 'paid_out'
+
+        $query = DB::table('pos_staff_tips as st')
+            ->join('users as u', 'st.staff_id', '=', 'u.id')
+            ->leftJoin('transactions as t', 'st.transaction_id', '=', 't.id')
+            ->where('st.business_id', $business_id)
+            ->whereDate('st.created_at', '>=', $startDate)
+            ->whereDate('st.created_at', '<=', $endDate);
+
+        if ($staffId) {
+            $query->where('st.staff_id', $staffId);
+        }
+
+        if ($status && in_array($status, ['pending', 'paid_out'])) {
+            $query->where('st.status', $status);
+        }
+
+        $tips = $query->select([
+            'st.id',
+            'st.staff_id',
+            DB::raw("TRIM(CONCAT(COALESCE(u.first_name, ''), ' ', COALESCE(u.last_name, ''))) as staff_name"),
+            'st.transaction_id',
+            't.invoice_no',
+            'st.appointment_id',
+            'st.amount',
+            'st.payment_method',
+            'st.status',
+            'st.paid_out_at',
+            'st.notes',
+            'st.created_at',
+        ])
+        ->orderByDesc('st.created_at')
+        ->get();
+
+        $totalCollected = (float) $tips->sum('amount');
+        $totalPending = (float) $tips->where('status', 'pending')->sum('amount');
+        $totalPaidOut = (float) $tips->where('status', 'paid_out')->sum('amount');
+
+        // Group summary by staff member
+        $byStaff = [];
+        $grouped = $tips->groupBy('staff_id');
+        foreach ($grouped as $sId => $staffTips) {
+            $first = $staffTips->first();
+            $byStaff[] = [
+                'staff_id'      => $sId,
+                'staff_name'    => trim($first->staff_name),
+                'total_tips'    => round((float) $staffTips->sum('amount'), 3),
+                'pending_tips'  => round((float) $staffTips->where('status', 'pending')->sum('amount'), 3),
+                'paid_out_tips' => round((float) $staffTips->where('status', 'paid_out')->sum('amount'), 3),
+                'count'         => $staffTips->count(),
+            ];
+        }
+
+        return $this->successResponse([
+            'start_date'      => $startDate,
+            'end_date'        => $endDate,
+            'total_collected' => round($totalCollected, 3),
+            'total_pending'   => round($totalPending, 3),
+            'total_paid_out'  => round($totalPaidOut, 3),
+            'tips'            => $tips,
+            'by_staff'        => $byStaff,
+        ]);
+    }
+
+    /**
+     * Store tip directly (Scenario 2)
+     * POST /api/v1/saloon/tips
+     */
+    public function storeTip(Request $request): JsonResponse
+    {
+        $request->validate([
+            'staff_id'       => 'required|integer',
+            'amount'         => 'required|numeric|min:0.001',
+            'payment_method' => 'nullable|string',
+            'transaction_id' => 'nullable|integer',
+            'appointment_id' => 'nullable|integer',
+            'location_id'    => 'nullable|integer',
+            'notes'          => 'nullable|string|max:500',
+        ]);
+
+        $business_id = $this->getBusinessId($request);
+
+        $id = DB::table('pos_staff_tips')->insertGetId([
+            'business_id'    => $business_id,
+            'staff_id'       => $request->input('staff_id'),
+            'transaction_id' => $request->input('transaction_id'),
+            'appointment_id' => $request->input('appointment_id'),
+            'location_id'    => $request->input('location_id'),
+            'amount'         => (float) $request->input('amount'),
+            'payment_method' => $request->input('payment_method', 'cash'),
+            'status'         => 'pending',
+            'notes'          => $request->input('notes'),
+            'created_at'     => now(),
+            'updated_at'     => now(),
+        ]);
+
+        return $this->successResponse(['tip_id' => $id], 'Tip recorded successfully');
+    }
+
+    /**
+     * Mark tips as paid out to staff (Scenario 2)
+     * POST /api/v1/saloon/tips/payout
+     */
+    public function payoutTips(Request $request): JsonResponse
+    {
+        $request->validate([
+            'staff_id' => 'required|integer',
+            'tip_ids'  => 'nullable|array',
+            'notes'    => 'nullable|string|max:500',
+        ]);
+
+        $business_id = $this->getBusinessId($request);
+        $staffId = $request->input('staff_id');
+        $tipIds = $request->input('tip_ids');
+
+        $query = DB::table('pos_staff_tips')
+            ->where('business_id', $business_id)
+            ->where('staff_id', $staffId)
+            ->where('status', 'pending');
+
+        if (!empty($tipIds)) {
+            $query->whereIn('id', $tipIds);
+        }
+
+        $pendingTips = $query->get();
+        $payoutAmount = (float) $pendingTips->sum('amount');
+        $count = $pendingTips->count();
+
+        if ($count === 0) {
+            return $this->errorResponse('No pending tips found to pay out for this staff member', 422);
+        }
+
+        $query->update([
+            'status'      => 'paid_out',
+            'paid_out_at' => now(),
+            'paid_out_by' => $request->user()->id,
+            'notes'       => DB::raw("CONCAT(COALESCE(notes, ''), ' [Paid out on " . now()->toDateTimeString() . "]')"),
+            'updated_at'  => now(),
+        ]);
+
+        return $this->successResponse([
+            'staff_id'        => $staffId,
+            'paid_out_amount' => round($payoutAmount, 3),
+            'tips_count'      => $count,
+        ], "Paid out KD " . number_format($payoutAmount, 3) . " in tips to staff member.");
+    }
+
+    /**
+     * Get End of Day Staff Performance & Summary (Scenario 3)
+     * GET /api/v1/saloon/staff-daily-summary
+     */
+    public function staffDailySummary(Request $request): JsonResponse
+    {
+        $business_id = $this->getBusinessId($request);
+        $date = $request->input('date', now()->toDateString());
+        $locationId = $request->input('location_id');
+
+        // Fetch active service staff for this business
+        $staffMembers = \App\User::where('business_id', $business_id)
+            ->where('status', 'active')
+            ->where(function ($q) use ($business_id) {
+                $q->where('is_cmmsn_agnt', 1)
+                  ->orWhere('cmmsn_percent', '>', 0)
+                  ->orWhereHas('roles', function ($rq) use ($business_id) {
+                      $rq->where('name', 'LIKE', 'Service Staff#' . $business_id)
+                        ->orWhere('name', 'service_staff');
+                  });
+            })
+            ->get();
+
+        $colors = ['#E91E63', '#9C27B0', '#00BCD4', '#4CAF50', '#FF9800', '#2196F3', '#009688', '#3F51B5'];
+
+        $staffSummaries = [];
+        $salonTotalRevenue = 0;
+        $salonTotalServices = 0;
+        $salonTotalCommission = 0;
+        $salonTotalTips = 0;
+
+        foreach ($staffMembers as $index => $staff) {
+            $rate = (float) ($staff->cmmsn_percent ?? 0);
+
+            // Fetch transaction sell lines served by this staff on that date
+            $linesQuery = DB::table('transaction_sell_lines as sl')
+                ->join('transactions as t', 'sl.transaction_id', '=', 't.id')
+                ->leftJoin('products as p', 'sl.product_id', '=', 'p.id')
+                ->leftJoin('contacts as c', 't.contact_id', '=', 'c.id')
+                ->where('t.business_id', $business_id)
+                ->where('t.type', 'sell')
+                ->where('t.status', 'final')
+                ->whereDate('t.transaction_date', $date)
+                ->where(function ($q) use ($staff) {
+                    $q->where('sl.res_service_staff_id', $staff->id)
+                      ->orWhere('t.res_waiter_id', $staff->id)
+                      ->orWhere('t.commission_agent', $staff->id);
+                });
+
+            if ($locationId) {
+                $linesQuery->where('t.location_id', $locationId);
+            }
+
+            $lines = $linesQuery->select([
+                'sl.id',
+                'sl.transaction_id',
+                't.invoice_no',
+                't.transaction_date',
+                'sl.quantity',
+                'sl.unit_price_inc_tax',
+                'p.name as service_name',
+                'c.name as customer_name',
+            ])->get();
+
+            // Also check appointments completed on this date
+            $completedAppts = DB::table('pos_appointments')
+                ->where('business_id', $business_id)
+                ->where('staff_id', $staff->id)
+                ->whereDate('appointment_start', $date)
+                ->whereIn('status', ['completed', 'finished'])
+                ->get();
+
+            $serviceItems = [];
+            $staffRevenue = 0;
+
+            foreach ($lines as $l) {
+                $lineTotal = (float) $l->quantity * (float) $l->unit_price_inc_tax;
+                $staffRevenue += $lineTotal;
+                $serviceItems[] = [
+                    'source'       => 'sale',
+                    'invoice_no'   => $l->invoice_no,
+                    'customer'     => $l->customer_name ?? 'Walk-in Customer',
+                    'service_name' => $l->service_name ?? 'Service',
+                    'quantity'     => (float) $l->quantity,
+                    'unit_price'   => (float) $l->unit_price_inc_tax,
+                    'total'        => round($lineTotal, 3),
+                    'commission'   => round($lineTotal * ($rate / 100), 3),
+                    'time'         => substr((string)$l->transaction_date, 11, 5),
+                ];
+            }
+
+            // Fetch tips for this staff member on this date
+            $tipsQuery = DB::table('pos_staff_tips')
+                ->where('business_id', $business_id)
+                ->where('staff_id', $staff->id)
+                ->whereDate('created_at', $date);
+
+            $tipsList = $tipsQuery->get();
+            $staffTipsTotal = (float) $tipsList->sum('amount');
+            $staffTipsPending = (float) $tipsList->where('status', 'pending')->sum('amount');
+            $staffTipsPaid = (float) $tipsList->where('status', 'paid_out')->sum('amount');
+
+            $commissionEarned = round($staffRevenue * ($rate / 100), 3);
+            $totalPayout = round($commissionEarned + $staffTipsTotal, 3);
+
+            $servicesCount = $lines->count();
+            if ($servicesCount === 0 && $completedAppts->isNotEmpty()) {
+                $servicesCount = $completedAppts->count();
+            }
+
+            $staffSummaries[] = [
+                'staff_id'           => $staff->id,
+                'staff_name'         => trim($staff->first_name . ' ' . $staff->last_name),
+                'specialization'     => 'Stylist / Staff',
+                'color'              => $colors[$index % count($colors)],
+                'commission_percent' => $rate,
+                'services_count'     => $servicesCount,
+                'service_revenue'    => round($staffRevenue, 3),
+                'commission_earned'  => $commissionEarned,
+                'tips_total'         => round($staffTipsTotal, 3),
+                'tips_pending'       => round($staffTipsPending, 3),
+                'tips_paid_out'      => round($staffTipsPaid, 3),
+                'total_payout'       => $totalPayout,
+                'services'           => $serviceItems,
+            ];
+
+            $salonTotalRevenue += $staffRevenue;
+            $salonTotalServices += $servicesCount;
+            $salonTotalCommission += $commissionEarned;
+            $salonTotalTips += $staffTipsTotal;
+        }
+
+        return $this->successResponse([
+            'date'                => $date,
+            'total_services'      => $salonTotalServices,
+            'total_revenue'       => round($salonTotalRevenue, 3),
+            'total_commission'    => round($salonTotalCommission, 3),
+            'total_tips'          => round($salonTotalTips, 3),
+            'total_staff_payout'  => round($salonTotalCommission + $salonTotalTips, 3),
+            'staff'               => $staffSummaries,
+        ]);
     }
 }

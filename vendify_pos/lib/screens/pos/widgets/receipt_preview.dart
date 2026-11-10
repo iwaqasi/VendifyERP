@@ -18,6 +18,9 @@ class ReceiptPreview extends StatefulWidget {
   final double change;
   final String customerName;
   final String businessType;
+  final String? zatcaQr;
+  final double? tipAmount;
+  final String? tipStaffName;
 
   const ReceiptPreview({
     super.key,
@@ -31,6 +34,9 @@ class ReceiptPreview extends StatefulWidget {
     required this.change,
     required this.customerName,
     required this.businessType,
+    this.zatcaQr,
+    this.tipAmount,
+    this.tipStaffName,
   });
 
   @override
@@ -321,7 +327,9 @@ class _ReceiptPreviewState extends State<ReceiptPreview> {
                     Expanded(
                       flex: 1,
                       child: Text(
-                        '${item.quantity.toInt()}',
+                        item.quantity.truncateToDouble() == item.quantity
+                            ? '${item.quantity.toInt()}'
+                            : item.quantity.toStringAsFixed(2),
                         style: const TextStyle(fontSize: 11, color: Colors.black87),
                         textAlign: TextAlign.center,
                       ),
@@ -388,6 +396,8 @@ class _ReceiptPreviewState extends State<ReceiptPreview> {
             _buildTotalRow('Tax', '$_currencySymbol ${widget.tax.toStringAsFixed(3)}'),
           if (widget.discount > 0)
             _buildTotalRow('Discount', '- $_currencySymbol ${widget.discount.toStringAsFixed(3)}', isNegative: true),
+          if (widget.tipAmount != null && widget.tipAmount! > 0)
+            _buildTotalRow('Tip (${widget.tipStaffName ?? "Staff"})', '+ $_currencySymbol ${widget.tipAmount!.toStringAsFixed(3)}'),
           
           const SizedBox(height: 8),
           Container(
@@ -494,22 +504,40 @@ class _ReceiptPreviewState extends State<ReceiptPreview> {
           ),
           const SizedBox(height: 16),
 
-          // Invoice barcode
+          // Invoice barcode or ZATCA QR Code
           Center(
-            child: BarcodeWidget(
-              barcode: Barcode.code128(),
-              data: widget.invoiceNumber,
-              width: 180,
-              height: 45,
-              drawText: false,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Center(
-            child: Text(
-              widget.invoiceNumber,
-              style: TextStyle(fontSize: 9, color: Colors.grey[500], letterSpacing: 1),
-            ),
+            child: (widget.zatcaQr != null && widget.zatcaQr!.isNotEmpty)
+                ? Column(
+                    children: [
+                      BarcodeWidget(
+                        barcode: Barcode.qrCode(),
+                        data: widget.zatcaQr!,
+                        width: 120,
+                        height: 120,
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        'ZATCA / Tax E-Invoice',
+                        style: TextStyle(fontSize: 10, color: Colors.grey[600], fontWeight: FontWeight.bold),
+                      ),
+                    ],
+                  )
+                : Column(
+                    children: [
+                      BarcodeWidget(
+                        barcode: Barcode.code128(),
+                        data: widget.invoiceNumber,
+                        width: 180,
+                        height: 45,
+                        drawText: false,
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        widget.invoiceNumber,
+                        style: TextStyle(fontSize: 9, color: Colors.grey[500], letterSpacing: 1),
+                      ),
+                    ],
+                  ),
           ),
         ],
       ),
@@ -543,6 +571,10 @@ class _ReceiptPreviewState extends State<ReceiptPreview> {
     const labels = {
       'cash': 'Cash',
       'card': 'Debit Card',
+      'knet': 'K-NET',
+      'mada': 'Mada',
+      'apple_pay': 'Apple Pay',
+      'stc_pay': 'STC Pay',
       'visa': 'Visa',
       'mastercard': 'Mastercard',
       'amex': 'Amex',
@@ -565,7 +597,10 @@ class _ReceiptPreviewState extends State<ReceiptPreview> {
     
     for (final item in widget.cartItems) {
       buffer.writeln(item.productName);
-      buffer.writeln('  ${item.quantity.toInt()} x $_currencySymbol ${item.unitPrice.toStringAsFixed(3)}  =  $_currencySymbol ${item.lineTotal.toStringAsFixed(3)}');
+      final qtyStr = item.quantity.truncateToDouble() == item.quantity
+          ? '${item.quantity.toInt()}'
+          : item.quantity.toStringAsFixed(2);
+      buffer.writeln('  $qtyStr x $_currencySymbol ${item.unitPrice.toStringAsFixed(3)}  =  $_currencySymbol ${item.lineTotal.toStringAsFixed(3)}');
     }
     
     buffer.writeln('');
@@ -573,6 +608,7 @@ class _ReceiptPreviewState extends State<ReceiptPreview> {
     buffer.writeln('Subtotal:    $_currencySymbol ${widget.subtotal.toStringAsFixed(3)}');
     if (widget.tax > 0) buffer.writeln('Tax:         $_currencySymbol ${widget.tax.toStringAsFixed(3)}');
     if (widget.discount > 0) buffer.writeln('Discount:   -$_currencySymbol ${widget.discount.toStringAsFixed(3)}');
+    if (widget.tipAmount != null && widget.tipAmount! > 0) buffer.writeln('Tip (${widget.tipStaffName ?? "Staff"}): +$_currencySymbol ${widget.tipAmount!.toStringAsFixed(3)}');
     buffer.writeln('═══════════════════════════════════');
     buffer.writeln('TOTAL:       $_currencySymbol ${widget.grandTotal.toStringAsFixed(3)}');
     buffer.writeln('');
@@ -626,7 +662,9 @@ class _ReceiptPreviewState extends State<ReceiptPreview> {
         customerName: widget.customerName,
         items: widget.cartItems.map((item) => {
           'name': item.productName,
-          'quantity': '${item.quantity.toInt()}',
+          'quantity': item.quantity.truncateToDouble() == item.quantity
+              ? '${item.quantity.toInt()}'
+              : item.quantity.toStringAsFixed(2),
           'unit_price': item.unitPrice.toStringAsFixed(3),
           'line_total': item.lineTotal.toStringAsFixed(3),
           'discount': item.discountAmount > 0 ? item.discountAmount.toStringAsFixed(3) : null,
@@ -642,6 +680,7 @@ class _ReceiptPreviewState extends State<ReceiptPreview> {
         change: widget.change > 0 ? widget.change.toStringAsFixed(3) : null,
         footer: _receiptFooter,
         currencySymbol: _currencySymbol,
+        zatcaQr: widget.zatcaQr,
       );
 
       if (mounted) {

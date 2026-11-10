@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:vendify_pos/config/theme.dart';
+import 'package:vendify_pos/config/navigation.dart';
 import 'package:vendify_pos/screens/login/login_screen.dart';
 import 'package:vendify_pos/screens/pos/pos_layout_router.dart';
 
@@ -19,6 +20,23 @@ class _PinScreenState extends ConsumerState<PinScreen> {
   bool _isLoading = false;
   String? _error;
   final int _maxPinLength = 4;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkDeviceBinding();
+  }
+
+  Future<void> _checkDeviceBinding() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (!prefs.containsKey('business_id')) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _openFullLogin();
+        }
+      });
+    }
+  }
 
   void _onKeyPress(String value) {
     if (_pin.length < _maxPinLength) {
@@ -48,35 +66,52 @@ class _PinScreenState extends ConsumerState<PinScreen> {
     setState(() => _isLoading = true);
 
     try {
+      final savedPrefs = await SharedPreferences.getInstance();
+      final businessId = savedPrefs.getInt('business_id');
+
+      if (businessId == null) {
+        _openFullLogin();
+        return;
+      }
+
       final api = ref.read(apiProvider);
       
       final response = await api.post('/v1/auth/login-by-pin', data: {
         'pin': _pin,
+        'business_id': businessId,
       });
 
       if (response.data['success'] == true) {
-        final data = response.data['data'];
-        await api.saveToken(data['access_token']);
+        final data = response.data['data'] is Map ? response.data['data'] : <String, dynamic>{};
+        if (data['access_token'] != null) {
+          await api.saveToken(data['access_token'].toString());
+        }
         
         // Save business_id and location_id for POS screen
-        final userData = data['user'] ?? {};
+        final userData = (data['user'] is Map) ? data['user'] as Map : {};
         final savedPrefs = await SharedPreferences.getInstance();
         await savedPrefs.setInt('business_id', userData['business_id'] ?? 1);
         await savedPrefs.setInt('location_id', userData['default_location_id'] ?? 1);
-        await savedPrefs.setString('business_name', userData['business_name'] ?? '');
-        await savedPrefs.setString('business_slug', userData['business_slug'] ?? '');
-        await savedPrefs.setString('business_type', userData['business_type'] ?? 'retail');
-        await savedPrefs.setString('user_name', userData['name'] ?? 'Admin');
-        await savedPrefs.setBool('has_assigned_location', userData['has_assigned_location'] ?? false);
+        await savedPrefs.setString('business_name', userData['business_name']?.toString() ?? '');
+        await savedPrefs.setString('business_slug', userData['business_slug']?.toString() ?? '');
+        await savedPrefs.setString('business_type', userData['business_type']?.toString() ?? 'retail');
+        await savedPrefs.setString('user_name', userData['name']?.toString() ?? 'Admin');
+        await savedPrefs.setBool('has_assigned_location', userData['has_assigned_location'] == true);
         if (userData['default_location_name'] != null) {
-          await savedPrefs.setString('assigned_location_name', userData['default_location_name']);
+          await savedPrefs.setString('assigned_location_name', userData['default_location_name'].toString());
         }
         
         // Always go to POS layout router — it handles business type detection
         if (mounted) {
-          Navigator.of(context).pushReplacement(
-            MaterialPageRoute(builder: (_) => const PosLayoutRouter()),
-          );
+          if (navigatorKey.currentState != null) {
+            navigatorKey.currentState!.pushReplacement(
+              MaterialPageRoute(builder: (_) => const PosLayoutRouter()),
+            );
+          } else {
+            Navigator.of(context, rootNavigator: true).pushReplacement(
+              MaterialPageRoute(builder: (_) => const PosLayoutRouter()),
+            );
+          }
         }
       } else {
         setState(() {
@@ -95,9 +130,15 @@ class _PinScreenState extends ConsumerState<PinScreen> {
   }
 
   void _openFullLogin() {
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute(builder: (_) => const LoginScreen()),
-    );
+    if (navigatorKey.currentState != null) {
+      navigatorKey.currentState!.pushReplacement(
+        MaterialPageRoute(builder: (_) => const LoginScreen()),
+      );
+    } else if (mounted) {
+      Navigator.of(context, rootNavigator: true).pushReplacement(
+        MaterialPageRoute(builder: (_) => const LoginScreen()),
+      );
+    }
   }
 
   @override
@@ -180,7 +221,7 @@ class _PinScreenState extends ConsumerState<PinScreen> {
                   if (_error != null) ...[
                     const SizedBox(height: 10),
                     Text(
-                      _error!,
+                      _error ?? '',
                       style: const TextStyle(color: AppTheme.error, fontSize: 12),
                       textAlign: TextAlign.center,
                     ),
@@ -227,11 +268,12 @@ class _PinScreenState extends ConsumerState<PinScreen> {
                   const SizedBox(height: 16),
 
                   // Switch to full login
-                  TextButton(
+                  TextButton.icon(
                     onPressed: _openFullLogin,
-                    child: const Text(
-                      'Use email & password instead',
-                      style: TextStyle(color: AppTheme.textMuted, fontSize: 12),
+                    icon: const Icon(Icons.login, size: 16, color: AppTheme.primary),
+                    label: const Text(
+                      'Sign in with Username & Password',
+                      style: TextStyle(color: AppTheme.primary, fontSize: 13, fontWeight: FontWeight.w600),
                     ),
                   ),
                 ],

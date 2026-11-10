@@ -463,11 +463,14 @@ class StockTransferController extends Controller
                         'msg' => __('messages.transaction_edit_not_allowed', ['days' => $edit_days]), ];
                 }
 
+                $business_id = request()->session()->get('user.business_id');
+
                 //Get sell transfer transaction
-                $sell_transfer = Transaction::where('id', $id)
+                $sell_transfer = Transaction::where('business_id', $business_id)
+                                    ->where('id', $id)
                                     ->where('type', 'sell_transfer')
                                     ->with(['sell_lines'])
-                                    ->first();
+                                    ->firstOrFail();
 
                 //Get purchase transfer transaction
                 $purchase_transfer = Transaction::where('transfer_parent_id', $sell_transfer->id)

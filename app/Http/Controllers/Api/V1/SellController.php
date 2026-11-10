@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Contact;
+use App\Business;
 use App\Transaction;
 use App\TransactionSellLine;
 use App\TransactionPayment;
@@ -11,6 +12,8 @@ use App\Product;
 use App\Variation;
 use App\Util;
 use App\Utils\TransactionUtil;
+use App\Events\SellCreatedOrModified;
+use App\Http\Requests\Api\V1\CreateSaleRequest;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -113,7 +116,25 @@ class SellController extends BaseApiController
             return $this->errorResponse('Sale not found.', 404);
         }
 
-        return $this->successResponse($transaction);
+        $business = Business::find($business_id);
+        $zatcaQr = '';
+        try {
+            $totalTax = (float) ($transaction->tax_amount ?? 0);
+            $zatcaQr = $this->transactionUtil->_zatca_qr_text(
+                $business->name ?? 'Vendify',
+                $business->tax_number_1 ?? '',
+                $transaction,
+                $totalTax,
+                'phase_1'
+            );
+        } catch (\Throwable $e) {
+            // non-blocking
+        }
+
+        $responseData = $transaction->toArray();
+        $responseData['zatca_qr'] = $zatcaQr;
+
+        return $this->successResponse($responseData);
     }
 
     /**
@@ -133,10 +154,14 @@ class SellController extends BaseApiController
      * @bodyParam types_of_service_id int Service type (dine-in, takeaway). Example: 1
      * @bodyParam table_id int Table ID for dine-in. Example: 1
      */
-    public function store(Request $request)
+    public function store(CreateSaleRequest $request)
     {
         $business_id = $this->getBusinessId($request);
         $user_id = $request->user()->id;
+
+        if (!auth()->user()->can('sell.create') && !auth()->user()->can('direct_sell.access')) {
+            return $this->errorResponse('Unauthorized to create sales.', 403);
+        }
 
         // NOTE: No request-body logging here. Sale payloads contain PII
         // (customers, orders, payments) and must never land in logs.
@@ -158,6 +183,11 @@ class SellController extends BaseApiController
             'discount_type' => 'nullable|in:fixed,percentage',
             'discount_amount' => 'nullable|numeric|min:0',
             'shipping_charges' => 'nullable|numeric|min:0',
+            'tip_amount' => 'nullable|numeric|min:0',
+            'tip_staff_id' => 'nullable|integer',
+            'tip_payment_method' => 'nullable|string',
+            'appointment_id' => 'nullable|integer',
+            'res_waiter_id' => 'nullable|integer',
             'types_of_service_id' => 'nullable|integer',
             'table_id' => 'nullable|integer',
             'local_transaction_id' => 'nullable|string|max:64',
@@ -422,6 +452,7 @@ class SellController extends BaseApiController
                 'created_by' => $user_id,
                 'types_of_service_id' => $request->types_of_service_id,
                 'res_table_id' => $request->table_id,
+                'res_waiter_id' => $request->res_waiter_id ?? $request->tip_staff_id,
                 'is_created_from_api' => 1,
                 'invoice_token' => \Str::random(32),
                 'rp_redeemed' => !empty($request->rp_redeemed) ? $request->rp_redeemed : 0,
@@ -477,7 +508,82 @@ class SellController extends BaseApiController
                 ]);
             }
 
+            // Record tip in pos_staff_tips if provided
+            if (!empty($request->tip_amount) && (float)$request->tip_amount > 0 && !empty($request->tip_staff_id)) {
+                $tipMethod = $request->tip_payment_method ?? (!empty($request->payments) ? $request->payments[0]['method'] : 'cash');
+                DB::table('pos_staff_tips')->insert([
+                    'business_id' => $business_id,
+                    'staff_id' => $request->tip_staff_id,
+                    'transaction_id' => $transaction->id,
+                    'appointment_id' => $request->appointment_id ?? null,
+                    'location_id' => $request->location_id,
+                    'amount' => (float) $request->tip_amount,
+                    'payment_method' => $tipMethod,
+                    'status' => 'pending',
+                    'notes' => 'Tip from invoice #' . $invoice_no,
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+            }
+
+            // Link appointment if provided
+            if (!empty($request->appointment_id)) {
+                DB::table('pos_appointments')
+                    ->where('id', $request->appointment_id)
+                    ->where('business_id', $business_id)
+                    ->update([
+                        'sell_id' => $transaction->id,
+                        'status' => 'completed',
+                        'updated_at' => now(),
+                    ]);
+            }
+
+            // Map purchase & sell lines for FIFO/LIFO COGS and profit margin tracking
+            try {
+                $transaction->load('sell_lines');
+                $business = \App\Business::find($business_id);
+                $business_data = [
+                    'id' => $business_id,
+                    'accounting_method' => $business->accounting_method ?? 'fifo',
+                    'location_id' => $request->location_id,
+                    'pos_settings' => !empty($business->pos_settings) ? json_decode($business->pos_settings, true) : [],
+                ];
+                $this->transactionUtil->mapPurchaseSell($business_data, $transaction->sell_lines, 'purchase');
+            } catch (\Exception $e) {
+                \Log::warning('Purchase-sell mapping error: ' . $e->getMessage());
+            }
+
+            // Record payments to cash register if an active register exists for this user
+            try {
+                $register = \App\CashRegister::where('user_id', $user_id)
+                    ->where('status', 'open')
+                    ->first();
+                if ($register) {
+                    $register_payments = [];
+                    foreach ($request->payments as $payment) {
+                        $p_amount = (float) ($payment['amount'] ?? 0);
+                        if ($p_amount != 0) {
+                            $register_payments[] = new \App\CashRegisterTransaction([
+                                'amount' => $p_amount,
+                                'pay_method' => $payment['method'] ?? 'cash',
+                                'type' => 'credit',
+                                'transaction_type' => 'sell',
+                                'transaction_id' => $transaction->id,
+                            ]);
+                        }
+                    }
+                    if (! empty($register_payments)) {
+                        $register->cash_register_transactions()->saveMany($register_payments);
+                    }
+                }
+            } catch (\Exception $e) {
+                \Log::warning('Cash register recording error: ' . $e->getMessage());
+            }
+
             DB::commit();
+
+            // Dispatch sell event so Accounting module, ledgers, and registers stay synchronized
+            SellCreatedOrModified::dispatch($transaction);
 
             // Update customer reward points
             if (!empty($request->contact_id)) {
@@ -505,7 +611,25 @@ class SellController extends BaseApiController
             $transaction = Transaction::with(['contact', 'location', 'sell_lines.product', 'payment_lines'])
                 ->find($transaction->id);
 
-            $responseExtra = ['invoice_number' => $transaction->invoice_no];
+            $business = Business::find($business_id);
+            $zatcaQr = '';
+            try {
+                $totalTax = (float) ($transaction->tax_amount ?? 0);
+                $zatcaQr = $this->transactionUtil->_zatca_qr_text(
+                    $business->name ?? 'Vendify',
+                    $business->tax_number_1 ?? '',
+                    $transaction,
+                    $totalTax,
+                    'phase_1'
+                );
+            } catch (\Throwable $e) {
+                // non-blocking
+            }
+
+            $responseExtra = [
+                'invoice_number' => $transaction->invoice_no,
+                'zatca_qr' => $zatcaQr,
+            ];
 
             if (! empty($priceOverrides)) {
                 // Transparency: the client submitted unit prices that were not
@@ -561,6 +685,10 @@ class SellController extends BaseApiController
     public function destroyDraft(Request $request, $id)
     {
         $business_id = $this->getBusinessId($request);
+
+        if (!auth()->user()->can('sell.delete') && !auth()->user()->can('direct_sell.delete')) {
+            return $this->errorResponse('Unauthorized to delete drafts.', 403);
+        }
 
         $transaction = Transaction::where('business_id', $business_id)
             ->where('type', 'sell')
@@ -693,6 +821,7 @@ class SellController extends BaseApiController
     {
         $stock_detail = \App\VariationLocationDetails::where('variation_id', $variation_id)
             ->where('location_id', $location_id)
+            ->lockForUpdate()
             ->first();
 
         if ($stock_detail) {

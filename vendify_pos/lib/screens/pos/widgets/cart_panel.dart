@@ -7,7 +7,7 @@ class CartPanel extends StatefulWidget {
   final List<CartItem> cartItems;
   final String customerName;
   final int itemCount; // Distinct items
-  final int totalQuantity; // Total quantity
+  final num totalQuantity; // Total quantity
   final double subtotal;
   final double tax;
   final double grandTotal;
@@ -390,7 +390,7 @@ class _CartPanelState extends State<CartPanel> {
                 ),
                 const SizedBox(height: 12),
                 _buildDetailRow('Number of Items:', '${widget.itemCount}'),
-                _buildDetailRow('Quantity:', '${widget.totalQuantity}'),
+                _buildDetailRow('Quantity:', '${widget.totalQuantity.truncateToDouble() == widget.totalQuantity ? widget.totalQuantity.toInt() : widget.totalQuantity.toStringAsFixed(2)}'),
                 _buildDetailRow('Actual Amount:', 'KD ${widget.subtotal.toStringAsFixed(3)}'),
                 const SizedBox(height: 8),
                 
@@ -833,14 +833,16 @@ class _CartItemTile extends StatelessWidget {
               children: [
                 _buildQtyButton(
                   icon: Icons.remove,
-                  onTap: item.quantity > 1
-                      ? () => onQuantityChanged(item.quantity - 1)
+                  onTap: item.quantity > 0.05
+                      ? () => onQuantityChanged(double.parse((item.quantity - (item.quantity <= 1 ? 0.1 : 1)).toStringAsFixed(2)))
                       : null,
                 ),
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 8),
                   child: Text(
-                    '${item.quantity.toInt()}',
+                    item.quantity.truncateToDouble() == item.quantity
+                        ? '${item.quantity.toInt()}'
+                        : item.quantity.toStringAsFixed(2),
                     style: const TextStyle(
                       color: AppTheme.textPrimary,
                       fontWeight: FontWeight.w600,
@@ -849,7 +851,7 @@ class _CartItemTile extends StatelessWidget {
                 ),
                 _buildQtyButton(
                   icon: Icons.add,
-                  onTap: () => onQuantityChanged(item.quantity + 1),
+                  onTap: () => onQuantityChanged(double.parse((item.quantity + (item.quantity < 1 ? 0.1 : 1)).toStringAsFixed(2))),
                 ),
               ],
             ),

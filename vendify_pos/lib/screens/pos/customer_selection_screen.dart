@@ -335,8 +335,8 @@ class _AddCustomerScreenState extends ConsumerState<AddCustomerScreen> {
   String _zipCode = '';
 
   Future<void> _saveCustomer() async {
-    if (!_formKey.currentState!.validate()) return;
-    _formKey.currentState!.save();
+    if (_formKey.currentState?.validate() != true) return;
+    _formKey.currentState?.save();
 
     setState(() => _isSaving = true);
 

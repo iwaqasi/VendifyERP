@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:dio/dio.dart';
 import 'package:vendify_pos/config/theme.dart';
 import 'package:vendify_pos/models/contact.dart';
 import 'package:vendify_pos/services/pos_service.dart';
@@ -135,7 +136,7 @@ class _BookingDialogState extends State<BookingDialog> {
       _phoneController.text = customer.mobile ?? '';
       _isNewCustomer = false;
       _searchResults = [];
-      _customerSearchController.clear();
+      _customerSearchController.text = customer.name;
     });
   }
 
@@ -145,6 +146,7 @@ class _BookingDialogState extends State<BookingDialog> {
       _isNewCustomer = true;
       _nameController.clear();
       _phoneController.clear();
+      _customerSearchController.clear();
       _searchResults = [];
     });
   }
@@ -222,10 +224,35 @@ class _BookingDialogState extends State<BookingDialog> {
   // ========== Save ==========
 
   Future<void> _saveBooking() async {
-    if (!_formKey.currentState!.validate()) return;
+    if (_formKey.currentState?.validate() != true) return;
     if (_selectedServices.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please add at least one service'), backgroundColor: AppTheme.error),
+      );
+      return;
+    }
+
+    // Auto-resolve customer if user typed in search box but didn't tap dropdown item
+    if (!_isNewCustomer && _selectedContactId == null) {
+      if (_searchResults.isNotEmpty) {
+        final query = _customerSearchController.text.trim().toLowerCase();
+        final match = _searchResults.firstWhere(
+          (c) => (c.mobile != null && c.mobile!.contains(query)) || c.name.toLowerCase().contains(query),
+          orElse: () => _searchResults.first,
+        );
+        _selectExistingCustomer(match);
+      } else if (_customerSearchController.text.trim().isNotEmpty) {
+        _nameController.text = _customerSearchController.text.trim();
+      }
+    }
+
+    final customerName = _nameController.text.trim();
+    if (customerName.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please select a customer or switch to "Add New Customer"'),
+          backgroundColor: AppTheme.error,
+        ),
       );
       return;
     }
@@ -241,14 +268,14 @@ class _BookingDialogState extends State<BookingDialog> {
         _selectedTime.hour, _selectedTime.minute,
       );
 
-      final customerName = _nameController.text.trim();
+      final resolvedCustomerName = _nameController.text.trim();
 
       // If new customer, create them first
       int? contactId = _selectedContactId;
-      if (_isNewCustomer && customerName.isNotEmpty) {
+      if (_isNewCustomer && resolvedCustomerName.isNotEmpty) {
         try {
           final newContact = await widget.posService.createContact(
-            name: customerName,
+            name: resolvedCustomerName,
             type: 'customer',
             mobile: _phoneController.text.trim().isNotEmpty ? _phoneController.text.trim() : null,
           );
@@ -263,7 +290,7 @@ class _BookingDialogState extends State<BookingDialog> {
       final servicePrices = _selectedServices.map((s) => s.price).toList();
 
       await widget.posService.createSaloonAppointment({
-        'customer_name': customerName,
+        'customer_name': resolvedCustomerName,
         'customer_phone': _phoneController.text.trim().isNotEmpty ? _phoneController.text.trim() : null,
         'contact_id': contactId,
         'service_name': serviceNames,
@@ -279,7 +306,7 @@ class _BookingDialogState extends State<BookingDialog> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('✅ Booked ${_selectedServices.length} service(s) for $customerName'),
+            content: Text('✅ Booked ${_selectedServices.length} service(s) for $resolvedCustomerName'),
             backgroundColor: AppTheme.success,
           ),
         );
@@ -288,8 +315,30 @@ class _BookingDialogState extends State<BookingDialog> {
       }
     } catch (e) {
       if (mounted) {
+        String errorMessage = 'Failed to create appointment';
+        if (e is DioException) {
+          final resData = e.response?.data;
+          if (resData is Map) {
+            if (resData['message'] != null) {
+              errorMessage = resData['message'].toString();
+            } else if (resData['error'] != null) {
+              errorMessage = resData['error'].toString();
+            }
+            if (resData['errors'] != null && resData['errors'] is Map) {
+              final errMap = resData['errors'] as Map;
+              final firstErr = errMap.values.first;
+              if (firstErr is List && firstErr.isNotEmpty) {
+                errorMessage += ': ${firstErr.first}';
+              }
+            }
+          } else {
+            errorMessage = e.message ?? e.toString();
+          }
+        } else {
+          errorMessage = e.toString();
+        }
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('❌ Failed: ${e.toString()}'), backgroundColor: AppTheme.error),
+          SnackBar(content: Text('❌ $errorMessage'), backgroundColor: AppTheme.error),
         );
       }
     } finally {
@@ -364,74 +413,125 @@ class _BookingDialogState extends State<BookingDialog> {
 
             // Customer search or new customer fields
             if (!_isNewCustomer) ...[
-              // Search existing customers
-              TextField(
-                controller: _customerSearchController,
-                style: const TextStyle(color: AppTheme.textPrimary, fontSize: 13),
-                decoration: InputDecoration(
-                  hintText: 'Search customer by name, phone...',
-                  prefixIcon: const Icon(Icons.search, size: 18, color: AppTheme.textMuted),
-                  suffixIcon: _isSearchingCustomers
-                      ? const Padding(padding: EdgeInsets.all(12), child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)))
-                      : _customerSearchController.text.isNotEmpty
-                          ? IconButton(icon: const Icon(Icons.clear, size: 16), onPressed: () { _customerSearchController.clear(); setState(() => _searchResults = []); })
-                          : null,
-                  filled: true, fillColor: AppTheme.background,
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10), isDense: true,
-                ),
-                onChanged: _searchCustomers,
-              ),
-
-              // Search results dropdown
-              if (_searchResults.isNotEmpty)
-                Container(
-                  margin: const EdgeInsets.only(top: 4),
-                  constraints: const BoxConstraints(maxHeight: 160),
-                  decoration: BoxDecoration(
-                    color: AppTheme.background, borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: AppTheme.border),
+              if (_selectedContactId == null) ...[
+                // Search existing customers
+                TextField(
+                  controller: _customerSearchController,
+                  style: const TextStyle(color: AppTheme.textPrimary, fontSize: 13),
+                  decoration: InputDecoration(
+                    hintText: 'Search customer by name, phone...',
+                    prefixIcon: const Icon(Icons.search, size: 18, color: AppTheme.textMuted),
+                    suffixIcon: _isSearchingCustomers
+                        ? const Padding(padding: EdgeInsets.all(12), child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)))
+                        : _customerSearchController.text.isNotEmpty
+                            ? IconButton(icon: const Icon(Icons.clear, size: 16), onPressed: () { _customerSearchController.clear(); setState(() => _searchResults = []); })
+                            : null,
+                    filled: true, fillColor: AppTheme.background,
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10), isDense: true,
                   ),
-                  child: ListView.builder(
-                    shrinkWrap: true,
-                    itemCount: _searchResults.length,
-                    itemBuilder: (context, index) {
-                      final c = _searchResults[index];
-                      return ListTile(
-                        dense: true, visualDensity: VisualDensity.compact,
-                        leading: CircleAvatar(
-                          radius: 16, backgroundColor: AppTheme.primary.withValues(alpha: 0.1),
-                          child: Text(c.name.isNotEmpty ? c.name[0].toUpperCase() : '?', style: TextStyle(color: AppTheme.primary, fontSize: 12, fontWeight: FontWeight.bold)),
+                  onChanged: _searchCustomers,
+                ),
+
+                // Search results dropdown
+                if (_searchResults.isNotEmpty)
+                  Container(
+                    margin: const EdgeInsets.only(top: 4),
+                    constraints: const BoxConstraints(maxHeight: 160),
+                    decoration: BoxDecoration(
+                      color: AppTheme.background, borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: AppTheme.border),
+                    ),
+                    child: ListView.builder(
+                      shrinkWrap: true,
+                      itemCount: _searchResults.length,
+                      itemBuilder: (context, index) {
+                        final c = _searchResults[index];
+                        return ListTile(
+                          dense: true, visualDensity: VisualDensity.compact,
+                          leading: CircleAvatar(
+                            radius: 16, backgroundColor: AppTheme.primary.withValues(alpha: 0.1),
+                            child: Text(c.name.isNotEmpty ? c.name[0].toUpperCase() : '?', style: TextStyle(color: AppTheme.primary, fontSize: 12, fontWeight: FontWeight.bold)),
+                          ),
+                          title: Text(c.name, style: const TextStyle(fontSize: 13, color: AppTheme.textPrimary)),
+                          subtitle: c.mobile != null ? Text(c.mobile!, style: const TextStyle(fontSize: 11, color: AppTheme.textMuted)) : null,
+                          onTap: () => _selectExistingCustomer(c),
+                        );
+                      },
+                    ),
+                  ),
+
+                // Helpful hint if search returned nothing
+                if (!_isSearchingCustomers && _customerSearchController.text.trim().length >= 2 && _searchResults.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 6, left: 4),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.info_outline, size: 14, color: AppTheme.textMuted),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            'No customer found for "${_customerSearchController.text}".',
+                            style: const TextStyle(fontSize: 11, color: AppTheme.textMuted),
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         ),
-                        title: Text(c.name, style: const TextStyle(fontSize: 13, color: AppTheme.textPrimary)),
-                        subtitle: c.mobile != null ? Text(c.mobile!, style: const TextStyle(fontSize: 11, color: AppTheme.textMuted)) : null,
-                        onTap: () => _selectExistingCustomer(c),
-                      );
-                    },
+                        InkWell(
+                          onTap: () {
+                            final query = _customerSearchController.text.trim();
+                            _switchToNewCustomer();
+                            if (RegExp(r'^[0-9+\s\-]+$').hasMatch(query)) {
+                              _phoneController.text = query;
+                            } else {
+                              _nameController.text = query;
+                            }
+                          },
+                          child: const Text(
+                            ' Add as new?',
+                            style: TextStyle(fontSize: 11, color: Color(0xFFE91E63), fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-
-              // Selected customer display or switch to new
-              if (_selectedContactId != null)
+              ] else ...[
+                // Selected customer display
                 Container(
-                  margin: const EdgeInsets.only(top: 8),
-                  padding: const EdgeInsets.all(10),
+                  padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
                     color: AppTheme.success.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8),
                     border: Border.all(color: AppTheme.success.withValues(alpha: 0.3)),
                   ),
                   child: Row(
                     children: [
-                      const Icon(Icons.check_circle, color: AppTheme.success, size: 18),
-                      const SizedBox(width: 8),
-                      Expanded(child: Text(_nameController.text, style: const TextStyle(fontWeight: FontWeight.w600, color: AppTheme.textPrimary, fontSize: 13))),
+                      const Icon(Icons.check_circle, color: AppTheme.success, size: 20),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(_nameController.text, style: const TextStyle(fontWeight: FontWeight.w600, color: AppTheme.textPrimary, fontSize: 13)),
+                            if (_phoneController.text.isNotEmpty)
+                              Text(_phoneController.text, style: const TextStyle(color: AppTheme.textMuted, fontSize: 11)),
+                          ],
+                        ),
+                      ),
                       TextButton(
-                        onPressed: () { setState(() { _selectedContactId = null; _nameController.clear(); _phoneController.clear(); }); },
+                        onPressed: () {
+                          setState(() {
+                            _selectedContactId = null;
+                            _nameController.clear();
+                            _phoneController.clear();
+                            _customerSearchController.clear();
+                            _searchResults = [];
+                          });
+                        },
                         child: const Text('Change', style: TextStyle(fontSize: 11)),
                       ),
                     ],
                   ),
                 ),
+              ],
 
               const SizedBox(height: 6),
               TextButton.icon(

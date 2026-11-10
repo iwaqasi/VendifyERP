@@ -11,6 +11,7 @@ class Contact extends Authenticatable
 {
     use Notifiable;
     use SoftDeletes;
+    use \App\Traits\BelongsToTenant;
 
     /**
      * The attributes that aren't mass assignable.
@@ -281,37 +282,37 @@ class Contact extends Authenticatable
     {
         $address_array = [];
         if (! empty($this->supplier_business_name)) {
-            $address_array[] = $this->supplier_business_name;
+            $address_array[] = e($this->supplier_business_name);
         }
         if (! empty($this->name)) {
-            $address_array[] = ! empty($this->supplier_business_name) ? '<br>'.$this->name : $this->name;
+            $address_array[] = ! empty($this->supplier_business_name) ? '<br>'.e($this->name) : e($this->name);
         }
         if (! empty($this->address_line_1)) {
-            $address_array[] = '<br>'.$this->address_line_1;
+            $address_array[] = '<br>'.e($this->address_line_1);
         }
         if (! empty($this->address_line_2)) {
-            $address_array[] = '<br>'.$this->address_line_2;
+            $address_array[] = '<br>'.e($this->address_line_2);
         }
         if (! empty($this->city)) {
-            $address_array[] = '<br>'.$this->city;
+            $address_array[] = '<br>'.e($this->city);
         }
         if (! empty($this->state)) {
-            $address_array[] = $this->state;
+            $address_array[] = e($this->state);
         }
         if (! empty($this->country)) {
-            $address_array[] = $this->country;
+            $address_array[] = e($this->country);
         }
         if (! empty($this->land_mark)) {
-            $address_array[] = $this->land_mark;
+            $address_array[] = e($this->land_mark);
         }
         if (! empty($this->street_name)) {
-            $address_array[] = $this->street_name;
+            $address_array[] = e($this->street_name);
         }
         if (! empty($this->building_number)) {
-            $address_array[] = $this->building_number;
+            $address_array[] = e($this->building_number);
         }
         if (! empty($this->additional_number)) {
-            $address_array[] = $this->additional_number;
+            $address_array[] = e($this->additional_number);
         }
 
         $address = '';
@@ -319,7 +320,7 @@ class Contact extends Authenticatable
             $address = implode(', ', $address_array);
         }
         if (! empty($this->zip_code)) {
-            $address .= ',<br>'.$this->zip_code;
+            $address .= ',<br>'.e($this->zip_code);
         }
 
         return $address;

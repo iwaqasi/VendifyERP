@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Http\Requests\Api\V1\CreateRestaurantOrderRequest;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -81,7 +82,7 @@ class RestaurantController extends BaseApiController
      * Create new order
      * POST /api/v1/restaurant/orders
      */
-    public function storeOrder(Request $request): JsonResponse
+    public function storeOrder(CreateRestaurantOrderRequest $request): JsonResponse
     {
         $request->validate([
             'order_type' => 'required|string|in:dine_in,takeaway,delivery,drive_through',
@@ -148,6 +149,7 @@ class RestaurantController extends BaseApiController
                 'discount' => $item['discount'] ?? 0,
                 'tax_amount' => 0,
                 'line_total' => $lineTotal,
+                'station' => $item['station'] ?? 'kitchen',
                 'kot_status' => 'pending',
                 'course_number' => $item['course_number'],
                 'notes' => $item['notes'],
@@ -252,6 +254,7 @@ class RestaurantController extends BaseApiController
                     'kot_number' => $kotNumber,
                     'table_name' => $order->table_id ? "Table " . $order->table_id : null,
                     'order_type' => $order->order_type,
+                    'station' => $item->station ?? 'kitchen',
                     'item_name' => $item->item_name,
                     'quantity' => $item->quantity,
                     'notes' => $item->notes,
@@ -271,5 +274,192 @@ class RestaurantController extends BaseApiController
         return $this->successResponse([
             'kot_number' => $kotNumber,
         ], 'KOT sent to kitchen');
+    }
+
+    /**
+     * Get KDS active orders for kitchen, bar, dessert stations
+     * GET /api/v1/restaurant/kds/orders
+     */
+    public function kdsOrders(Request $request): JsonResponse
+    {
+        $business_id = $this->getBusinessId($request);
+        $station = $request->input('station', 'all');
+        $location_id = $request->input('location_id');
+
+        $query = DB::table('pos_kot_items as ki')
+            ->join('pos_orders as o', 'ki.order_id', '=', 'o.id')
+            ->leftJoin('pos_tables as t', 'o.table_id', '=', 't.id')
+            ->where('o.business_id', $business_id)
+            ->whereIn('ki.status', ['pending', 'preparing', 'ready'])
+            ->select([
+                'ki.id as kot_item_id',
+                'ki.order_id',
+                'ki.kot_number',
+                'ki.station',
+                'ki.item_name',
+                'ki.quantity',
+                'ki.notes as item_notes',
+                'ki.status as item_status',
+                'ki.sent_at',
+                'ki.started_at',
+                'ki.completed_at',
+                'o.order_number',
+                'o.order_type',
+                'o.notes as order_notes',
+                't.name as table_name',
+                'o.created_at as order_created_at',
+            ]);
+
+        if ($station !== 'all') {
+            $query->where('ki.station', $station);
+        }
+
+        if ($location_id) {
+            $query->where('o.location_id', $location_id);
+        }
+
+        $items = $query->orderBy('ki.sent_at', 'asc')->get();
+
+        $ordersMap = [];
+        foreach ($items as $item) {
+            $orderId = $item->order_id;
+            if (!isset($ordersMap[$orderId])) {
+                $sentTime = \Carbon\Carbon::parse($item->sent_at ?? $item->order_created_at);
+                $ordersMap[$orderId] = [
+                    'order_id'        => $orderId,
+                    'order_number'    => $item->order_number,
+                    'kot_number'      => $item->kot_number,
+                    'order_type'      => $item->order_type,
+                    'table_name'      => $item->table_name ?? 'Walk-in',
+                    'order_notes'     => $item->order_notes,
+                    'sent_at'         => $item->sent_at,
+                    'elapsed_minutes' => round($sentTime->diffInMinutes(now())),
+                    'items'           => [],
+                ];
+            }
+
+            $ordersMap[$orderId]['items'][] = [
+                'id'           => $item->kot_item_id,
+                'name'         => $item->item_name,
+                'quantity'     => (float) $item->quantity,
+                'station'      => $item->station,
+                'status'       => $item->item_status,
+                'notes'        => $item->item_notes,
+                'started_at'   => $item->started_at,
+                'completed_at' => $item->completed_at,
+            ];
+        }
+
+        return $this->successResponse([
+            'station' => $station,
+            'tickets' => array_values($ordersMap),
+        ]);
+    }
+
+    /**
+     * Transition a KDS item status
+     * PUT /api/v1/restaurant/kds/items/{id}/status
+     */
+    public function updateKdsItemStatus(Request $request, int $id): JsonResponse
+    {
+        $request->validate([
+            'status' => 'required|string|in:pending,preparing,ready,served,cancelled',
+        ]);
+
+        $business_id = $this->getBusinessId($request);
+        $newStatus = $request->input('status');
+
+        $kotItem = DB::table('pos_kot_items as ki')
+            ->join('pos_orders as o', 'ki.order_id', '=', 'o.id')
+            ->where('ki.id', $id)
+            ->where('o.business_id', $business_id)
+            ->select('ki.*')
+            ->first();
+
+        if (!$kotItem) {
+            return $this->errorResponse('KOT item not found', 404);
+        }
+
+        $updates = [
+            'status'     => $newStatus,
+            'updated_at' => now(),
+        ];
+
+        if ($newStatus === 'preparing' && empty($kotItem->started_at)) {
+            $updates['started_at'] = now();
+        } elseif ($newStatus === 'ready' && empty($kotItem->completed_at)) {
+            $updates['completed_at'] = now();
+        }
+
+        DB::table('pos_kot_items')->where('id', $id)->update($updates);
+
+        if (!empty($kotItem->order_item_id)) {
+            $orderItemUpdates = ['kot_status' => $newStatus, 'updated_at' => now()];
+            if ($newStatus === 'ready') {
+                $orderItemUpdates['prepared_at'] = now();
+            } elseif ($newStatus === 'served') {
+                $orderItemUpdates['served_at'] = now();
+            }
+            DB::table('pos_order_items')->where('id', $kotItem->order_item_id)->update($orderItemUpdates);
+        }
+
+        $remaining = DB::table('pos_kot_items')
+            ->where('order_id', $kotItem->order_id)
+            ->whereIn('status', ['pending', 'preparing'])
+            ->count();
+
+        if ($remaining === 0) {
+            DB::table('pos_orders')
+                ->where('id', $kotItem->order_id)
+                ->update(['status' => 'ready', 'updated_at' => now()]);
+        }
+
+        return $this->successResponse([
+            'kot_item_id' => $id,
+            'status'      => $newStatus,
+            'order_ready' => ($remaining === 0),
+        ], 'Item status updated to ' . $newStatus);
+    }
+
+    /**
+     * Mark an entire restaurant order as served
+     * PUT /api/v1/restaurant/kds/orders/{order_id}/serve
+     */
+    public function serveOrder(Request $request, int $order_id): JsonResponse
+    {
+        $business_id = $this->getBusinessId($request);
+
+        $order = DB::table('pos_orders')
+            ->where('id', $order_id)
+            ->where('business_id', $business_id)
+            ->first();
+
+        if (!$order) {
+            return $this->errorResponse('Order not found', 404);
+        }
+
+        DB::table('pos_kot_items')
+            ->where('order_id', $order_id)
+            ->update([
+                'status'     => 'served',
+                'updated_at' => now(),
+            ]);
+
+        DB::table('pos_order_items')
+            ->where('order_id', $order_id)
+            ->update([
+                'kot_status' => 'served',
+                'served_at'  => now(),
+                'updated_at' => now(),
+            ]);
+
+        DB::table('pos_orders')
+            ->where('id', $order_id)
+            ->update([
+                'status'     => 'served',
+                'updated_at' => now(),
+            ]);
+
+        return $this->successResponse(['order_id' => $order_id], 'Order and all items marked as served');
     }
 }

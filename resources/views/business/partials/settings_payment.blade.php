@@ -37,4 +37,62 @@
             </div>
         </div>
     </div>
+
+    <hr>
+    <h4><i class="fas fa-credit-card text-primary"></i> GCC Payment Gateways (MyFatoorah / Tap / K-NET / Mada)</h4>
+    <p class="text-muted">Configure your regional payment gateway credentials. If left empty, system-level credentials from <code>.env</code> will be used.</p>
+    
+    <div class="row">
+        <div class="col-sm-6">
+            <div class="form-group">
+                {!! Form::label('myfatoorah_api_key', 'MyFatoorah API Token Key:') !!}
+                {!! Form::text('pos_settings[myfatoorah_api_key]', $pos_settings['myfatoorah_api_key'] ?? null, ['class' => 'form-control', 'placeholder' => config('myfatoorah.api_key') ? '•••••••• (Using system .env key)' : 'Paste API Token here']) !!}
+            </div>
+        </div>
+
+        <div class="col-sm-3">
+            <div class="form-group">
+                {!! Form::label('myfatoorah_country_iso', 'Gateway Country:') !!}
+                {!! Form::select('pos_settings[myfatoorah_country_iso]', [
+                    'KWT' => 'Kuwait (K-NET / Cards)',
+                    'SAU' => 'Saudi Arabia (Mada / Cards)',
+                    'ARE' => 'UAE (Cards / Apple Pay)',
+                    'QAT' => 'Qatar (QPay)',
+                    'BHR' => 'Bahrain (Benefit)',
+                    'OMN' => 'Oman (OmanNet)',
+                    'EGY' => 'Egypt (Fawry / Meeza)'
+                ], $pos_settings['myfatoorah_country_iso'] ?? config('myfatoorah.country_iso', 'KWT'), ['class' => 'form-control select2', 'style' => 'width: 100%;']) !!}
+            </div>
+        </div>
+
+        <div class="col-sm-3">
+            <div class="form-group">
+                {!! Form::label('myfatoorah_test_mode', 'Environment Mode:') !!}
+                {!! Form::select('pos_settings[myfatoorah_test_mode]', [
+                    '0' => 'Live / Production',
+                    '1' => 'Test / Sandbox'
+                ], isset($pos_settings['myfatoorah_test_mode']) ? $pos_settings['myfatoorah_test_mode'] : (config('myfatoorah.test_mode') ? '1' : '0'), ['class' => 'form-control', 'style' => 'width: 100%;']) !!}
+            </div>
+        </div>
+
+        <div class="col-sm-6">
+            <div class="form-group">
+                {!! Form::label('myfatoorah_webhook_secret', 'Webhook Secret Key (IPN):') !!}
+                {!! Form::text('pos_settings[myfatoorah_webhook_secret]', $pos_settings['myfatoorah_webhook_secret'] ?? null, ['class' => 'form-control', 'placeholder' => 'Optional secret key for signature verification']) !!}
+                <small class="text-muted">Webhook Endpoint URL: <code>{{ url('/myfatoorah/webhook') }}</code></small>
+            </div>
+        </div>
+
+        <div class="col-sm-6">
+            <div class="form-group">
+                <br>
+                <div class="checkbox">
+                    <label>
+                        {!! Form::checkbox('pos_settings[myfatoorah_enable_apple_pay]', 1, !empty($pos_settings['myfatoorah_enable_apple_pay']), ['class' => 'input-icheck']) !!}
+                        Enable Direct Apple Pay (Requires verified merchant domain)
+                    </label>
+                </div>
+            </div>
+        </div>
+    </div>
 </div>

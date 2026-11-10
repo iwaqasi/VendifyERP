@@ -1,3 +1,18 @@
+double _parseDouble(dynamic value) {
+  if (value == null) return 0.0;
+  if (value is num) return value.toDouble();
+  if (value is String) return double.tryParse(value) ?? 0.0;
+  return 0.0;
+}
+
+int _parseInt(dynamic value) {
+  if (value == null) return 0;
+  if (value is int) return value;
+  if (value is num) return value.toInt();
+  if (value is String) return int.tryParse(value) ?? 0;
+  return 0;
+}
+
 class StockAtOtherLocation {
   final int locationId;
   final String locationName;
@@ -11,9 +26,9 @@ class StockAtOtherLocation {
 
   factory StockAtOtherLocation.fromJson(Map<String, dynamic> json) {
     return StockAtOtherLocation(
-      locationId: json['location_id'] ?? 0,
-      locationName: json['location_name'] ?? '',
-      qtyAvailable: (json['qty_available'] ?? 0).toDouble(),
+      locationId: _parseInt(json['location_id']),
+      locationName: json['location_name']?.toString() ?? '',
+      qtyAvailable: _parseDouble(json['qty_available']),
     );
   }
 }
@@ -82,34 +97,48 @@ class Product {
 
   factory Product.fromJson(Map<String, dynamic> json) {
     return Product(
-      id: json['id'] ?? 0,
-      name: json['name'] ?? '',
-      sku: json['sku'],
+      id: _parseInt(json['id']),
+      name: json['name']?.toString() ?? '',
+      sku: json['sku']?.toString(),
       barcode: json['barcode']?.toString(),
-      type: json['type'] ?? 'single',
-      categoryId: json['category_id'],
-      categoryName: json['category_name'],
-      brandName: json['brand_name'],
-      unitName: json['unit_name'],
-      sellPriceIncTax: (json['sell_price_inc_tax'] ?? 0).toDouble(),
-      productCostPrice: (json['product_cost_price'] ?? 0).toDouble(),
+      type: json['type']?.toString() ?? 'single',
+      categoryId: json['category_id'] != null
+          ? _parseInt(json['category_id'])
+          : null,
+      categoryName: json['category_name']?.toString(),
+      brandName: json['brand_name']?.toString(),
+      unitName: json['unit_name']?.toString(),
+      sellPriceIncTax: _parseDouble(json['sell_price_inc_tax']),
+      productCostPrice: _parseDouble(json['product_cost_price']),
       enableStock: json['enable_stock'] == true || json['enable_stock'] == 1,
-      qtyAvailable: (json['qty_available'] ?? 0).toDouble(),
-      stockAtOtherLocations: json['stock_at_other_locations'] != null
+      qtyAvailable: _parseDouble(json['qty_available']),
+      stockAtOtherLocations: json['stock_at_other_locations'] is List
           ? (json['stock_at_other_locations'] as List)
-              .map((l) => StockAtOtherLocation.fromJson(l))
-              .toList()
+                .whereType<Map>()
+                .map(
+                  (l) => StockAtOtherLocation.fromJson(
+                    Map<String, dynamic>.from(l),
+                  ),
+                )
+                .toList()
           : [],
-      isFlexiblePrice: json['is_flexible_price'] == true || json['is_flexible_price'] == 1,
-      image: json['image'],
-      taxId: json['tax_id'],
-      taxName: json['tax_name'],
-      taxRate: (json['tax_rate'] ?? 0).toDouble(),
-      description: json['description'],
-      isServiceProduct: json['is_service_product'] == true,
-      hasVariations: json['has_variations'] == true,
-      serviceTime: json['service_time'],
-      variationId: json['variation_id'],
+      isFlexiblePrice:
+          json['is_flexible_price'] == true || json['is_flexible_price'] == 1,
+      image: json['image']?.toString(),
+      taxId: json['tax_id'] != null ? _parseInt(json['tax_id']) : null,
+      taxName: json['tax_name']?.toString(),
+      taxRate: _parseDouble(json['tax_rate']),
+      description: json['description']?.toString(),
+      isServiceProduct:
+          json['is_service_product'] == true || json['is_service_product'] == 1,
+      hasVariations:
+          json['has_variations'] == true || json['has_variations'] == 1,
+      serviceTime: json['service_time'] != null
+          ? _parseInt(json['service_time'])
+          : null,
+      variationId: json['variation_id'] != null
+          ? _parseInt(json['variation_id'])
+          : null,
     );
   }
   Map<String, dynamic> toJson() => {
@@ -126,11 +155,15 @@ class Product {
     'product_cost_price': productCostPrice,
     'enable_stock': enableStock,
     'qty_available': qtyAvailable,
-    'stock_at_other_locations': stockAtOtherLocations.map((l) => {
-      'location_id': l.locationId,
-      'location_name': l.locationName,
-      'qty_available': l.qtyAvailable,
-    }).toList(),
+    'stock_at_other_locations': stockAtOtherLocations
+        .map(
+          (l) => {
+            'location_id': l.locationId,
+            'location_name': l.locationName,
+            'qty_available': l.qtyAvailable,
+          },
+        )
+        .toList(),
     'is_flexible_price': isFlexiblePrice,
     'image': image,
     'tax_id': taxId,
@@ -167,13 +200,13 @@ class ProductVariation {
 
   factory ProductVariation.fromJson(Map<String, dynamic> json) {
     return ProductVariation(
-      id: json['id'] ?? 0,
-      name: json['name'] ?? '',
-      sku: json['sku'],
+      id: _parseInt(json['id']),
+      name: json['name']?.toString() ?? '',
+      sku: json['sku']?.toString(),
       barcode: json['barcode']?.toString(),
-      sellPriceIncTax: (json['sell_price_inc_tax'] ?? 0).toDouble(),
-      unitPriceIncTax: (json['unit_price_inc_tax'] ?? 0).toDouble(),
-      qtyAvailable: (json['qty_available'] ?? 0).toDouble(),
+      sellPriceIncTax: _parseDouble(json['sell_price_inc_tax']),
+      unitPriceIncTax: _parseDouble(json['unit_price_inc_tax']),
+      qtyAvailable: _parseDouble(json['qty_available']),
       enableStock: json['enable_stock'] == true || json['enable_stock'] == 1,
     );
   }
@@ -209,12 +242,12 @@ class Category {
 
   factory Category.fromJson(Map<String, dynamic> json) {
     return Category(
-      id: json['id'] ?? 0,
-      name: json['name'] ?? '',
-      parentId: json['parent_id'],
-      productCount: json['product_count'] ?? 0,
-      image: json['image'],
-      imageUrl: json['image_url'],
+      id: _parseInt(json['id']),
+      name: json['name']?.toString() ?? '',
+      parentId: json['parent_id'] != null ? _parseInt(json['parent_id']) : null,
+      productCount: _parseInt(json['product_count']),
+      image: json['image']?.toString(),
+      imageUrl: json['image_url']?.toString(),
     );
   }
 
@@ -233,23 +266,15 @@ class TaxRate {
   final String name;
   final double amount;
 
-  TaxRate({
-    required this.id,
-    required this.name,
-    this.amount = 0,
-  });
+  TaxRate({required this.id, required this.name, this.amount = 0});
 
   factory TaxRate.fromJson(Map<String, dynamic> json) {
     return TaxRate(
-      id: json['id'] ?? 0,
-      name: json['name'] ?? '',
-      amount: (json['amount'] ?? 0).toDouble(),
+      id: _parseInt(json['id']),
+      name: json['name']?.toString() ?? '',
+      amount: _parseDouble(json['amount']),
     );
   }
 
-  Map<String, dynamic> toJson() => {
-    'id': id,
-    'name': name,
-    'amount': amount,
-  };
+  Map<String, dynamic> toJson() => {'id': id, 'name': name, 'amount': amount};
 }

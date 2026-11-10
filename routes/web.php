@@ -586,10 +586,27 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone'])
 });
 
 // ============================================================
-// VendifyPOS Web - Flutter Web POS
-// Serves the Flutter web build from public/pos/
-// Cashiers access this at: https://erp.arksoftsolutions.com/pos/
+// GCC Regional Gateways - MyFatoorah Live Integration
 // ============================================================
-Route::get('/vendify-pos', function () {
-    return response()->file(public_path('vendify-pos/index.html'));
-});
+Route::get('/myfatoorah/pay', [\App\Http\Controllers\MyFatoorahController::class, 'index'])->name('myfatoorah_index');
+Route::get('/myfatoorah/callback', [\App\Http\Controllers\MyFatoorahController::class, 'callback'])->name('myfatoorah_callback');
+Route::post('/myfatoorah/callback', [\App\Http\Controllers\MyFatoorahController::class, 'callback']);
+Route::post('/myfatoorah/webhook', [\App\Http\Controllers\MyFatoorahController::class, 'webhook'])->name('myfatoorah_webhook');
+
+// ============================================================
+// VendifyPOS Web - Flutter Web POS
+// Serves the Flutter web build from public/vendify-pos/
+// ============================================================
+Route::get('/vendify-pos/{any?}', function ($any = null) {
+    if (!empty($any)) {
+        $assetPath = public_path('vendify-pos/' . $any);
+        if (file_exists($assetPath) && !is_dir($assetPath)) {
+            return response()->file($assetPath);
+        }
+    }
+    $indexPath = public_path('vendify-pos/index.html');
+    if (file_exists($indexPath)) {
+        return response()->file($indexPath);
+    }
+    abort(404, 'Vendify POS web client is not yet built in public/vendify-pos.');
+})->where('any', '.*');

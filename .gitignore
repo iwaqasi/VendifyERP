@@ -54,6 +54,8 @@ uninstall_aide.bat
 
 # Flutter build output
 vendify_pos/build/
+vendify_pos/android/build/
+vendify_pos/android/.gradle/
 vendify_pos/.dart_tool/
 vendify_pos/.flutter-plugins-dependencies
 vendify_cms/build/
@@ -68,3 +70,13 @@ vendify_cms/*.iml
 # PHPUnit result cache
 .phpunit.result.cache
 /.phpunit.cache/
+
+# Deployment archives and certificates
+*.zip
+vendify-deploy.zip
+public/*.zip
+vendify_pos/certificates/
+vendify_pos/*.pfx
+vendify_pos/*.jks
+vendify_pos/*.keystore
+key.properties

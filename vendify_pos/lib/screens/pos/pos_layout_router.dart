@@ -43,9 +43,11 @@ class _PosLayoutRouterState extends ConsumerState<PosLayoutRouter> {
       final businessData = await _posService.getBusinessType();
       
       if (businessData.isNotEmpty) {
-        final type = businessData['business_type'] ?? 'retail';
-        final layout = businessData['pos_layout'] ?? 'retail';
-        final features = businessData['features'] ?? {};
+        final type = businessData['business_type']?.toString() ?? 'retail';
+        final layout = businessData['pos_layout']?.toString() ?? 'retail';
+        final features = (businessData['features'] is Map)
+            ? Map<String, dynamic>.from(businessData['features'])
+            : <String, dynamic>{};
         
         // Save to local cache
         await prefs.setString('business_type', type);
@@ -54,7 +56,7 @@ class _PosLayoutRouterState extends ConsumerState<PosLayoutRouter> {
         setState(() {
           _businessType = type;
           _posLayout = layout;
-          _features = Map<String, dynamic>.from(features);
+          _features = features;
         });
       }
 
@@ -116,13 +118,6 @@ class _PosLayoutRouterState extends ConsumerState<PosLayoutRouter> {
   }
 
   Widget _buildLocationSelector() {
-    // Get the saved user name for a personalized greeting
-    String userName = '';
-    String locationHint = '';
-    SharedPreferences.getInstance().then((p) {
-      userName = p.getString('user_name') ?? '';
-    });
-
     return Scaffold(
       backgroundColor: AppTheme.background,
       body: Center(
@@ -144,40 +139,46 @@ class _PosLayoutRouterState extends ConsumerState<PosLayoutRouter> {
                 style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppTheme.textPrimary),
               ),
               const SizedBox(height: 8),
-              Text(
-                locationHint.isNotEmpty ? locationHint : 'Choose which location to operate from',
-                style: const TextStyle(color: AppTheme.textSecondary, fontSize: 13),
+              const Text(
+                'Choose which location to operate from',
+                style: TextStyle(color: AppTheme.textSecondary, fontSize: 13),
               ),
               const SizedBox(height: 24),
-              ..._locations.map((loc) => Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: () async {
-                      final prefs = await SharedPreferences.getInstance();
-                      await prefs.setInt('location_id', loc['id']);
-                      setState(() => _selectedLocationId = loc['id']);
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppTheme.surfaceLight,
-                      foregroundColor: AppTheme.textPrimary,
-                      side: const BorderSide(color: AppTheme.border),
-                      padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.location_on, size: 20),
-                        const SizedBox(width: 12),
-                        Text(loc['name'] ?? 'Location'),
-                        const Spacer(),
-                        const Icon(Icons.chevron_right),
-                      ],
+              ..._locations.map((loc) {
+                final locId = (loc['id'] is int)
+                    ? loc['id'] as int
+                    : int.tryParse(loc['id']?.toString() ?? '') ?? 1;
+                final locName = loc['name']?.toString() ?? 'Location';
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: () async {
+                        final prefs = await SharedPreferences.getInstance();
+                        await prefs.setInt('location_id', locId);
+                        setState(() => _selectedLocationId = locId);
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppTheme.surfaceLight,
+                        foregroundColor: AppTheme.textPrimary,
+                        side: const BorderSide(color: AppTheme.border),
+                        padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.location_on, size: 20),
+                          const SizedBox(width: 12),
+                          Text(locName),
+                          const Spacer(),
+                          const Icon(Icons.chevron_right),
+                        ],
+                      ),
                     ),
                   ),
-                ),
-              )),
+                );
+              }),
             ],
           ),
         ),

@@ -112,22 +112,28 @@ class _PrintSettingsDialogState extends State<PrintSettingsDialog> {
               ),
             ),
             const SizedBox(height: 8),
-            ...PaperSize.values.map((size) => RadioListTile<PaperSize>(
-              title: Text(
-                _getPaperSizeLabel(size),
-                style: const TextStyle(color: AppTheme.textPrimary, fontSize: 14),
-              ),
-              subtitle: Text(
-                _getPaperSizeDescription(size),
-                style: const TextStyle(color: AppTheme.textMuted, fontSize: 12),
-              ),
-              value: size,
+            RadioGroup<PaperSize>(
               groupValue: _paperSize,
-              onChanged: (v) => setState(() => _paperSize = v!),
-              activeColor: AppTheme.primary,
-              contentPadding: EdgeInsets.zero,
-              dense: true,
-            )),
+              onChanged: (v) {
+                if (v != null) setState(() => _paperSize = v);
+              },
+              child: Column(
+                children: PaperSize.values.map((size) => RadioListTile<PaperSize>(
+                  title: Text(
+                    _getPaperSizeLabel(size),
+                    style: const TextStyle(color: AppTheme.textPrimary, fontSize: 14),
+                  ),
+                  subtitle: Text(
+                    _getPaperSizeDescription(size),
+                    style: const TextStyle(color: AppTheme.textMuted, fontSize: 12),
+                  ),
+                  value: size,
+                  activeColor: AppTheme.primary,
+                  contentPadding: EdgeInsets.zero,
+                  dense: true,
+                )).toList(),
+              ),
+            ),
 
             const SizedBox(height: 16),
 
@@ -178,7 +184,7 @@ class _PrintSettingsDialogState extends State<PrintSettingsDialog> {
               ),
               value: _autoPrint,
               onChanged: (v) => setState(() => _autoPrint = v),
-              activeColor: AppTheme.primary,
+              activeThumbColor: AppTheme.primary,
               contentPadding: EdgeInsets.zero,
             ),
 

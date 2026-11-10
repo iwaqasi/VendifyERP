@@ -263,11 +263,47 @@ class SubscriptionController extends BaseController
     }
 
     /**
+     * Calculate server-authoritative package price with coupon validation
+     *
+     * @param Package $package
+     * @param string|null $coupon_code
+     * @param int|null $business_id
+     * @return float
+     */
+    protected function _get_package_price($package, $coupon_code = null, $business_id = null)
+    {
+        $price = (float) $package->price;
+        if (! empty($coupon_code)) {
+            $coupon = SuperadminCoupon::where('coupon_code', $coupon_code)->first();
+            if ($coupon && $coupon->is_active == 1) {
+                $package_ids = json_decode($coupon->applied_on_packages, true);
+                $business_ids = json_decode($coupon->applied_on_business, true);
+                $current_date = \Carbon\Carbon::now()->toDateString();
+
+                $package_match = is_null($coupon->applied_on_packages) || (is_array($package_ids) && in_array($package->id, $package_ids));
+                $business_match = is_null($coupon->applied_on_business) || (is_array($business_ids) && in_array($business_id, $business_ids));
+                $not_expired = is_null($coupon->expiry_date) || \Carbon\Carbon::parse($coupon->expiry_date)->greaterThanOrEqualTo($current_date);
+
+                if ($package_match && $business_match && $not_expired) {
+                    if ($coupon->discount_type == 'fixed') {
+                        $price = max(0, $price - (float) $coupon->discount);
+                    } elseif ($coupon->discount_type == 'percentage') {
+                        $discount = $price * ((float) $coupon->discount / 100);
+                        $price = max(0, $price - $discount);
+                    }
+                }
+            }
+        }
+
+        return round($price, 2);
+    }
+
+    /**
      * Save the payment details and add subscription details
      * package_id becomes null for pesapal, and it's received from session
      * @return Response
      */
-    public function confirm($package_id = null, Request $request)
+    public function confirm(Request $request, $package_id = null)
     {
         if (! auth()->user()->can('superadmin.access_package_subscriptions')) {
             abort(403, 'Unauthorized action.');
@@ -295,7 +331,9 @@ class SubscriptionController extends BaseController
             $business_id = request()->session()->get('user.business_id');
             $business_name = request()->session()->get('business.name');
             $user_id = request()->session()->get('user.id');
-            $package = Package::active()->find($package_id);
+            $package = Package::active()->findOrFail($package_id);
+            $verified_price = $this->_get_package_price($package, request()->coupon_code, $business_id);
+            $request->merge(['price' => $verified_price]);
            
             //Call the payment method
             $pay_function = 'pay_'.request()->gateway;
@@ -305,7 +343,7 @@ class SubscriptionController extends BaseController
                 $payment_transaction_id = $this->$pay_function($business_id, $business_name, $package, $request);
             }
             //Add subscription details after payment is succesful
-            $this->_add_subscription(request()->coupon_code, request()->price,$business_id, $package_id, request()->gateway, $payment_transaction_id, $user_id);
+            $this->_add_subscription(request()->coupon_code, $verified_price, $business_id, $package_id, request()->gateway, $payment_transaction_id, $user_id);
             DB::commit();
 
             $msg = __('lang_v1.success');
@@ -381,7 +419,7 @@ class SubscriptionController extends BaseController
         $system_currency = System::getCurrency();
 
         $charge = Charge::create([
-            'amount' => $request->price * 100,
+            'amount' => (int) round($request->price * 100),
             'currency' => strtolower($system_currency->code),
             //"source" => $request->stripeToken,
             'customer' => $customer,
@@ -831,36 +869,42 @@ class SubscriptionController extends BaseController
              ->make(true);
     }
 
-    public function forceActive($id){
-
-        $current_date = \Carbon::today();
-
+    public function forceActive($id)
+    {
+        if (! auth()->user()->can('superadmin.access_package_subscriptions')) {
+            abort(403, 'Unauthorized action.');
+        }
 
         $business_id = request()->session()->get('user.business_id');
-     
+        $current_date = \Carbon::today();
+
         if (request()->ajax()) {
             try {
-                //Get active subscription
+                DB::beginTransaction();
+
+                // Get active subscription for the current business
                 $active = Subscription::active_subscription($business_id);
-                if($active){
-                    $active->end_date = $current_date->subDays(1)->toDateString();
+                if ($active) {
+                    $active->end_date = $current_date->copy()->subDays(1)->toDateString();
                     $active->update();
                 }
 
-                $subscription = Subscription::find($id);
-                $package = Package::find($subscription->package_id);
+                // Strictly ensure the subscription belongs to the authenticated business
+                $subscription = Subscription::where('business_id', $business_id)->findOrFail($id);
+                $package = Package::findOrFail($subscription->package_id);
 
-                //Calculate end date
+                // Calculate end date
                 $end_date = $this->calculate_end_date($package);
-                $current_date = \Carbon::today();
                 $subscription->start_date = $current_date->toDateString();
                 $subscription->end_date = $end_date;
+                $subscription->status = 'approved';
                 $subscription->update();
+
+                DB::commit();
 
                 $output = ['success' => true,
                     'msg' => __('lang_v1.success'),
                 ];
-
             } catch (\Exception $e) {
                 DB::rollBack();
                 \Log::emergency('File:'.$e->getFile().'Line:'.$e->getLine().'Message:'.$e->getMessage());

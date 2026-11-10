@@ -13,11 +13,18 @@ import 'package:vendify_pos/screens/pos/widgets/product_card.dart';
 import 'package:vendify_pos/screens/pos/widgets/inventory_dialog.dart';
 import 'package:vendify_pos/screens/pos/widgets/cart_panel.dart';
 import 'package:vendify_pos/screens/pos/payment_screen.dart';
+import 'package:vendify_pos/screens/pos/widgets/sync_center_dialog.dart';
+import 'package:vendify_pos/screens/pos/widgets/sync_status_badge.dart';
+import 'package:vendify_pos/screens/pos/widgets/diagnostics_dialog.dart';
+import 'package:vendify_pos/screens/pos/widgets/audit_trail_dialog.dart';
+import 'package:provider/provider.dart' as p;
+import 'package:vendify_pos/providers/locale_provider.dart';
 import 'package:vendify_pos/screens/login/pin_screen.dart';
 import 'package:vendify_pos/screens/pos/customer_selection_sheet.dart';
 import 'package:vendify_pos/screens/pos/daily_register_screen.dart';
 import 'package:vendify_pos/screens/pos/widgets/booking_dialog.dart';
 import 'package:vendify_pos/screens/pos/widgets/appointment_detail_dialog.dart';
+import 'package:vendify_pos/screens/pos/widgets/staff_daily_summary_dialog.dart';
 
 class SaloonPosScreen extends ConsumerStatefulWidget {
   final String businessType;
@@ -60,6 +67,7 @@ class _SaloonPosScreenState extends ConsumerState<SaloonPosScreen> {
   List<Map<String, dynamic>> _staff = [];
   int? _selectedStaffId;
   String _selectedStaffName = 'Any Available';
+  int? _activeAppointmentId;
 
   // Receipt-level discount
   double _receiptDiscount = 0;
@@ -91,7 +99,7 @@ class _SaloonPosScreenState extends ConsumerState<SaloonPosScreen> {
       : _receiptDiscount;
   double get _grandTotal => (_subtotal + _totalTax - _receiptDiscountAmount - _rpDiscount).clamp(0, double.infinity).toDouble();
   int get _distinctItemCount => _cartItems.length;
-  int get _totalQuantity => _cartItems.fold(0, (sum, item) => sum + item.quantity.toInt());
+  num get _totalQuantity => _cartItems.fold(0.0, (sum, item) => sum + item.quantity);
 
   @override
   void initState() {
@@ -133,14 +141,18 @@ class _SaloonPosScreenState extends ConsumerState<SaloonPosScreen> {
         _posService.getCategories(),
         _posService.getPosSettings(),
       ]);
-      final settings = results[2] as Map<String, dynamic>;
+      final settings = (results[2] is Map) ? Map<String, dynamic>.from(results[2] as Map) : <String, dynamic>{};
       
       setState(() {
-        _products = results[0] as List<Product>;
-        _categories = results[1] as List<Category>;
-        final posSettings = (settings['pos_settings'] as Map<String, dynamic>?) ?? {};
+        _products = (results[0] is List<Product>) ? results[0] as List<Product> : <Product>[];
+        _categories = (results[1] is List<Category>) ? results[1] as List<Category> : <Category>[];
+        final posSettings = (settings['pos_settings'] is Map)
+            ? Map<String, dynamic>.from(settings['pos_settings'] as Map)
+            : <String, dynamic>{};
         // Merge: keep business type features (like appointment_sidebar) and add POS settings features
-        final posFeatures = Map<String, dynamic>.from(settings['features'] ?? {});
+        final posFeatures = (settings['features'] is Map)
+            ? Map<String, dynamic>.from(settings['features'] as Map)
+            : <String, dynamic>{};
         _features = {...posFeatures, ..._features};
         
         // Save receipt prefix to SharedPreferences for invoice generation
@@ -319,6 +331,7 @@ class _SaloonPosScreenState extends ConsumerState<SaloonPosScreen> {
       _contactId = null;
       _selectedStaffId = null;
       _selectedStaffName = 'Any Available';
+      _activeAppointmentId = null;
       _customerRewardPoints = 0;
       _rpRedeemAmount = 0.0;
       _rpDiscount = 0.0;
@@ -487,10 +500,20 @@ class _SaloonPosScreenState extends ConsumerState<SaloonPosScreen> {
       appointment: appointment,
       posService: _posService,
       staff: _staff,
+      availableServices: _products.where((p) => p.type == 'service' || p.sellPriceIncTax > 0).map((p) => {
+        'name': p.name,
+        'price': p.sellPriceIncTax,
+        'duration': 30,
+      }).toList(),
       onComplete: (result) {
         // Add completed services to the cart (skip duplicates)
         int addedCount = 0;
         setState(() {
+          _activeAppointmentId = result.appointmentId;
+          if (result.staffId != null) {
+            _selectedStaffId = result.staffId;
+            _selectedStaffName = result.staffName ?? 'Assigned Stylist';
+          }
           for (final service in result.services) {
             // Check if already in cart
             final existingIndex = _cartItems.indexWhere(
@@ -592,6 +615,9 @@ class _SaloonPosScreenState extends ConsumerState<SaloonPosScreen> {
           locationId: _locationId,
           rpDiscount: _rpDiscount,
           rpPointsRedeemed: _rpDiscount > 0 ? _customerRewardPoints : 0,
+          staffId: _selectedStaffId,
+          staffName: _selectedStaffName != 'Any Available' ? _selectedStaffName : null,
+          appointmentId: _activeAppointmentId,
         )));
   }
 
@@ -771,6 +797,17 @@ class _SaloonPosScreenState extends ConsumerState<SaloonPosScreen> {
             tooltip: 'Daily Register',
           ),
           IconButton(
+            icon: const Icon(Icons.badge_outlined, color: AppTheme.textSecondary, size: 22),
+            onPressed: () {
+              StaffDailySummaryDialog.show(
+                context: context,
+                posService: _posService,
+                locationId: _locationId,
+              );
+            },
+            tooltip: 'Staff Performance & Tips EOD',
+          ),
+          IconButton(
             icon: Icon(
               _showAppointmentSidebar ? Icons.calendar_view_day : Icons.calendar_today,
               color: AppTheme.textSecondary,
@@ -784,6 +821,48 @@ class _SaloonPosScreenState extends ConsumerState<SaloonPosScreen> {
             onPressed: _openInventory,
             tooltip: 'Inventory',
           ),
+          const SizedBox(width: 8),
+          const SyncStatusBadge(),
+          const SizedBox(width: 6),
+          IconButton(
+            icon: const Icon(Icons.sync_alt, color: AppTheme.textSecondary, size: 20),
+            onPressed: () => SyncCenterDialog.show(context),
+            tooltip: 'Sync Center',
+          ),
+          IconButton(
+            icon: const Icon(Icons.bug_report_outlined, color: AppTheme.textSecondary, size: 20),
+            onPressed: () => DiagnosticsDialog.show(context),
+            tooltip: 'Diagnostics & Logs',
+          ),
+          IconButton(
+            icon: const Icon(Icons.shield_outlined, color: AppTheme.textSecondary, size: 20),
+            onPressed: () => AuditTrailDialog.show(context, _posService),
+            tooltip: 'Audit Trail & Activity Logs',
+          ),
+          const SizedBox(width: 4),
+          p.Consumer<LocaleProvider>(
+            builder: (ctx, loc, _) => InkWell(
+              onTap: () => loc.toggleLocale(),
+              borderRadius: BorderRadius.circular(6),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: AppTheme.surfaceLight,
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(color: AppTheme.border),
+                ),
+                child: Text(
+                  loc.isRtl ? 'English' : 'عربي',
+                  style: const TextStyle(
+                    color: AppTheme.primary,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12,
+                  ),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 4),
           IconButton(
             icon: const Icon(Icons.logout, color: AppTheme.textSecondary, size: 22),
             onPressed: _logout,
@@ -1312,23 +1391,7 @@ class _SaloonPosScreenState extends ConsumerState<SaloonPosScreen> {
             style: const TextStyle(color: AppTheme.textSecondary, fontSize: 12),
           ),
           const Spacer(),
-          Row(
-            children: [
-              Container(
-                width: 8,
-                height: 8,
-                decoration: const BoxDecoration(
-                  color: AppTheme.success,
-                  shape: BoxShape.circle,
-                ),
-              ),
-              const SizedBox(width: 6),
-              const Text(
-                'Online',
-                style: TextStyle(color: AppTheme.success, fontSize: 12),
-              ),
-            ],
-          ),
+          const SyncStatusBadge(isCompact: true),
         ],
       ),
     );
