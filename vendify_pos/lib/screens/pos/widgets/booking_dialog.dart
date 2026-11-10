@@ -78,8 +78,26 @@ class _BookingDialogState extends State<BookingDialog> {
   bool _isSaving = false;
 
   // Customer search
+  List<Contact> _allCustomers = [];
   List<Contact> _searchResults = [];
   bool _isSearchingCustomers = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadInitialCustomers();
+  }
+
+  Future<void> _loadInitialCustomers() async {
+    try {
+      final list = await widget.posService.getContacts(type: 'customer', perPage: 200);
+      if (mounted) {
+        setState(() {
+          _allCustomers = list;
+        });
+      }
+    } catch (_) {}
+  }
 
   List<Map<String, dynamic>> get _serviceList => widget.services.isNotEmpty
       ? widget.services
@@ -108,20 +126,42 @@ class _BookingDialogState extends State<BookingDialog> {
   // ========== Customer Search ==========
 
   Future<void> _searchCustomers(String query) async {
-    if (query.length < 2) {
+    final q = query.trim().toLowerCase();
+    if (q.length < 2) {
       setState(() => _searchResults = []);
       return;
     }
-    setState(() => _isSearchingCustomers = true);
+
+    // 1. Instant local search from _allCustomers
+    final cleanDigits = q.replaceAll(RegExp(r'[^0-9]'), '');
+    final localMatches = _allCustomers.where((c) {
+      final nameMatches = c.name.toLowerCase().contains(q);
+      final phone = (c.mobile ?? '').replaceAll(RegExp(r'[^0-9]'), '');
+      final phoneMatches = cleanDigits.length >= 3 && phone.contains(cleanDigits);
+      return nameMatches || phoneMatches;
+    }).toList();
+
+    setState(() {
+      _searchResults = localMatches;
+      _isSearchingCustomers = true;
+    });
+
+    // 2. Fetch from backend API
     try {
       final results = await widget.posService.getContacts(
-        search: query,
+        search: query.trim(),
         type: 'customer',
         perPage: 20,
       );
       if (mounted) {
+        final merged = List<Contact>.from(results);
+        for (final loc in localMatches) {
+          if (!merged.any((m) => m.id == loc.id)) {
+            merged.add(loc);
+          }
+        }
         setState(() {
-          _searchResults = results;
+          _searchResults = merged;
           _isSearchingCustomers = false;
         });
       }
@@ -244,9 +284,30 @@ class _BookingDialogState extends State<BookingDialog> {
         _selectExistingCustomer(match);
       } else if (_customerSearchController.text.trim().isNotEmpty) {
         final query = _customerSearchController.text.trim();
-        _nameController.text = query;
-        if (RegExp(r'^[0-9+\s\-]+$').hasMatch(query)) {
-          _phoneController.text = query;
+        final cleanDigits = query.replaceAll(RegExp(r'[^0-9]'), '');
+        Contact? found;
+        if (cleanDigits.length >= 4) {
+          try {
+            found = _allCustomers.firstWhere(
+              (c) => (c.mobile ?? '').replaceAll(RegExp(r'[^0-9]'), '').contains(cleanDigits),
+            );
+          } catch (_) {}
+        }
+        if (found == null) {
+          try {
+            found = _allCustomers.firstWhere(
+              (c) => c.name.toLowerCase() == query.toLowerCase(),
+            );
+          } catch (_) {}
+        }
+
+        if (found != null) {
+          _selectExistingCustomer(found);
+        } else {
+          _nameController.text = query;
+          if (RegExp(r'^[0-9+\s\-]+$').hasMatch(query)) {
+            _phoneController.text = query;
+          }
         }
       }
     }
@@ -275,9 +336,9 @@ class _BookingDialogState extends State<BookingDialog> {
 
       final resolvedCustomerName = _nameController.text.trim();
 
-      // If new customer, create them first
+      // If contactId is null, attempt to create customer automatically
       int? contactId = _selectedContactId;
-      if (_isNewCustomer && resolvedCustomerName.isNotEmpty) {
+      if (contactId == null && resolvedCustomerName.isNotEmpty) {
         try {
           final newContact = await widget.posService.createContact(
             name: resolvedCustomerName,
@@ -286,7 +347,7 @@ class _BookingDialogState extends State<BookingDialog> {
           );
           contactId = newContact.id;
         } catch (_) {
-          // Continue without contact if creation fails
+          // If creation fails, continue without contact (backend storeAppointment will resolve by phone/name)
         }
       }
 
