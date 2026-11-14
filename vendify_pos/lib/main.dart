@@ -1,5 +1,6 @@
-import 'package:flutter/material.dart';
-import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:cupertino_ui/cupertino_ui.dart';
+import 'package:material_ui/material_ui.dart';
+import 'package:flutter_localizations/flutter_localizations.dart' hide GlobalMaterialLocalizations, GlobalCupertinoLocalizations;
 import 'package:provider/provider.dart';
 import 'package:vendify_pos/config/theme.dart';
 import 'package:vendify_pos/config/api_config.dart';
@@ -64,7 +65,7 @@ class VendifyPosApp extends StatelessWidget {
         Locale('en', 'US'),
         Locale('ar', 'SA'),
       ],
-      localizationsDelegates: const [
+      localizationsDelegates: [
         GlobalMaterialLocalizations.delegate,
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,

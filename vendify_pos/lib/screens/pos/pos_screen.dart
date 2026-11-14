@@ -1,7 +1,7 @@
 import 'package:vendify_pos/providers/api_provider.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'dart:convert';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:vendify_pos/config/theme.dart';
 import 'package:vendify_pos/models/product.dart';

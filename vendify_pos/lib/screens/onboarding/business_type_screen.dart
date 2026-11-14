@@ -1,6 +1,6 @@
 import 'package:vendify_pos/providers/api_provider.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:vendify_pos/config/theme.dart';
 import 'package:vendify_pos/services/pos_service.dart';
 import 'package:vendify_pos/screens/pos/pos_layout_router.dart';

@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:vendify_pos/config/theme.dart';
 import 'package:vendify_pos/services/print_service.dart';
 

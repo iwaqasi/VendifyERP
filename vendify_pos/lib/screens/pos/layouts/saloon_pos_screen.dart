@@ -3,7 +3,7 @@ import 'package:vendify_pos/providers/api_provider.dart';
 import 'package:vendify_pos/screens/pos/widgets/hold_recall_service.dart';
 import 'package:vendify_pos/screens/pos/invoice_history_screen.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:vendify_pos/config/theme.dart';
 import 'package:vendify_pos/models/product.dart';
