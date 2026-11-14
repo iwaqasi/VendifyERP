@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 class CmsTheme {
   static const Color primary = Color(0xFF1a1a2e);
