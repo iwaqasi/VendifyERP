@@ -56,7 +56,7 @@ $(document).ready(function() {
 
     //If tax rate is changed
     $(document).on('change', 'select#tax', function() {
-        if ($('select#type').val() == 'single') {
+        if ($('select#type').val() == 'single' || $('select#type').val() == 'service') {
             var purchase_exc_tax = __read_number($('input#single_dpp'));
             purchase_exc_tax = purchase_exc_tax == undefined ? 0 : purchase_exc_tax;
 
@@ -714,6 +714,63 @@ $(document).on('submit', 'form#quick_add_brand_form', function(e) {
         },
     });
 });
+
+//Quick add category
+$(document).on('submit', 'form#category_add_form', function(e) {
+    e.preventDefault();
+    var form = $(this);
+    var data = new FormData(this);
+
+    $.ajax({
+        method: 'POST',
+        url: $(this).attr('action'),
+        dataType: 'json',
+        data: data,
+        processData: false,
+        contentType: false,
+        beforeSend: function(xhr) {
+            __disable_submit_button(form.find('button[type="submit"]'));
+        },
+        success: function(result) {
+            if (result.success === true || result.success == 1) {
+                var newOption = new Option(result.data.name, result.data.id, true, true);
+                if (result.data.parent_id != 0 && result.data.parent_id != null) {
+                    $('#category_id').val(result.data.parent_id).trigger('change');
+                    setTimeout(function() {
+                        var subOption = new Option(result.data.name, result.data.id, true, true);
+                        $('#sub_category_id').append(subOption).val(result.data.id).trigger('change');
+                    }, 500);
+                } else {
+                    $('#category_id').append(newOption).val(result.data.id).trigger('change');
+                }
+                $('div.category_modal').modal('hide');
+                $('div.view_modal').modal('hide');
+                toastr.success(result.msg);
+            } else {
+                toastr.error(result.msg);
+            }
+        },
+    });
+});
+
+//Service product type stock toggle
+function check_service_type() {
+    if ($('select#type').val() == 'service') {
+        $('input#enable_stock').iCheck('uncheck');
+        $('input#enable_stock').closest('.form-group').hide();
+        $('div#alert_quantity_div').hide();
+        $('div#quick_product_opening_stock_div').hide();
+    } else {
+        $('input#enable_stock').closest('.form-group').show();
+        if ($('input#enable_stock').is(':checked')) {
+            $('div#alert_quantity_div').show();
+        }
+    }
+}
+$(document).on('change', 'select#type', function() {
+    check_service_type();
+});
+check_service_type();
 
 $(document).on('click', 'button.apply-all', function(){
     var val = $(this).closest('.input-group').find('input').val();

@@ -2670,6 +2670,21 @@ class ReportController extends Controller
     }
 
     /**
+     * Shows staff tips report
+     *
+     * @param  \Illuminate\Http\Request  $request
+     * @return \Illuminate\Http\Response
+     */
+    public function getStaffTipsReport(Request $request)
+    {
+        if (! auth()->user()->can('sales_representative.view') && ! auth()->user()->can('purchase_n_sell_report.view')) {
+            abort(403, 'Unauthorized action.');
+        }
+
+        return app(\App\Http\Controllers\Restaurant\BookingController::class)->staffTipsReport($request);
+    }
+
+    /**
      * Shows product sell report grouped by date
      *
      * @return \Illuminate\Http\Response

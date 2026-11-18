@@ -24,7 +24,7 @@
                             {!! Form::label('type', __('product.product_type') . ':') !!}
                             {!! Form::select(
                                 'type',
-                                ['single' => __('lang_v1.single'), 'variable' => __('lang_v1.variable'), 'combo' => __('lang_v1.combo')],
+                                ['single' => __('lang_v1.single'), 'variable' => __('lang_v1.variable'), 'combo' => __('lang_v1.combo'), 'service' => __('lang_v1.service')],
                                 null,
                                 [
                                     'class' => 'form-control select2',

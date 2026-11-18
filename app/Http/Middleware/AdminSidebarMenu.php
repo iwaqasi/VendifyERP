@@ -747,6 +747,14 @@ class AdminSidebarMenu
                             );
                         }
 
+                        if (auth()->user()->can('sales_representative.view') || auth()->user()->can('purchase_n_sell_report.view')) {
+                            $sub->url(
+                                action([\App\Http\Controllers\ReportController::class, 'getStaffTipsReport']),
+                                __('report.staff_tips_report'),
+                                ['icon' => '', 'active' => request()->segment(2) == 'staff-tips']
+                            );
+                        }
+
                         if ($is_admin) {
                             $sub->url(
                                 action([\App\Http\Controllers\ReportController::class, 'activityLog']),

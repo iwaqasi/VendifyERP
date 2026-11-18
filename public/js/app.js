@@ -2255,10 +2255,17 @@ function get_sub_units() {
 }
 function show_product_type_form() {
 
-    //Disable Stock management & Woocommmerce sync if type combo
-    if($('#type').val() == 'combo'){
+    //Disable Stock management & Woocommmerce sync if type combo or service
+    if($('#type').val() == 'combo' || $('#type').val() == 'service'){
         $('#enable_stock').iCheck('uncheck');
+        if($('#type').val() == 'service') {
+            $('#enable_stock').closest('.form-group').hide();
+            $('div#alert_quantity_div').hide();
+            $('div#quick_product_opening_stock_div').hide();
+        }
         $('input[name="woocommerce_disable_sync"]').iCheck('check');
+    } else {
+        $('#enable_stock').closest('.form-group').show();
     }
     
     var action = $('#type').attr('data-action');

@@ -78,4 +78,5 @@ return [
     'net_profit' => 'صافي الربح',
     'total_stock_adjustment' => 'إجمالي تعديل المخزون',
     'total_stock_recovered' => 'إجمالي كميات المخزون المستعادة',
+    'staff_tips_report' => 'تقرير الإكراميات (Tips)',
 ];

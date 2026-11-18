@@ -448,6 +448,7 @@ class ProductController extends Controller
         return ['single' => __('lang_v1.single'),
             'variable' => __('lang_v1.variable'),
             'combo' => __('lang_v1.combo'),
+            'service' => __('lang_v1.service'),
         ];
     }
 
@@ -476,6 +477,9 @@ class ProductController extends Controller
             $product_details['created_by'] = $request->session()->get('user.id');
 
             $product_details['enable_stock'] = (! empty($request->input('enable_stock')) && $request->input('enable_stock') == 1) ? 1 : 0;
+            if ($product_details['type'] == 'service') {
+                $product_details['enable_stock'] = 0;
+            }
             $product_details['not_for_selling'] = (! empty($request->input('not_for_selling')) && $request->input('not_for_selling') == 1) ? 1 : 0;
 
             if (! empty($request->input('sub_category_id'))) {
@@ -528,7 +532,7 @@ class ProductController extends Controller
                 $product->product_locations()->sync($product_locations);
             }
 
-            if ($product->type == 'single') {
+            if ($product->type == 'single' || $product->type == 'service') {
                 $this->productUtil->createSingleProductVariation($product->id, $product->sku, $request->input('single_dpp'), $request->input('single_dpp_inc_tax'), $request->input('profit_percent'), $request->input('single_dsp'), $request->input('single_dsp_inc_tax'));
             } elseif ($product->type == 'variable') {
                 if (! empty($request->input('product_variation'))) {
@@ -751,7 +755,9 @@ class ProductController extends Controller
             $product->warranty_id = ! empty($request->input('warranty_id')) ? $request->input('warranty_id') : null;
             $product->secondary_unit_id = ! empty($request->input('secondary_unit_id')) ? $request->input('secondary_unit_id') : null;
 
-            if (! empty($request->input('enable_stock')) && $request->input('enable_stock') == 1) {
+            if ($product->type == 'service') {
+                $product->enable_stock = 0;
+            } elseif (! empty($request->input('enable_stock')) && $request->input('enable_stock') == 1) {
                 $product->enable_stock = 1;
             } else {
                 $product->enable_stock = 0;
@@ -821,7 +827,7 @@ class ProductController extends Controller
 
             $product->product_locations()->sync($product_locations);
 
-            if ($product->type == 'single') {
+            if ($product->type == 'single' || $product->type == 'service') {
                 $single_data = $request->only(['single_variation_id', 'single_dpp', 'single_dpp_inc_tax', 'single_dsp_inc_tax', 'profit_percent', 'single_dsp']);
                 $variation = Variation::find($single_data['single_variation_id']);
 
@@ -1101,7 +1107,7 @@ class ProductController extends Controller
 
         $action = $request->input('action');
         if ($request->input('action') == 'add') {
-            if ($request->input('type') == 'single') {
+            if ($request->input('type') == 'single' || $request->input('type') == 'service') {
                 return view('product.partials.single_product_form_part')
                         ->with(['profit_percent' => $profit_percent]);
             } elseif ($request->input('type') == 'variable') {
@@ -1117,7 +1123,7 @@ class ProductController extends Controller
         } elseif ($request->input('action') == 'edit' || $request->input('action') == 'duplicate') {
             $product_id = $request->input('product_id');
             $action = $request->input('action');
-            if ($request->input('type') == 'single') {
+            if ($request->input('type') == 'single' || $request->input('type') == 'service') {
                 $product_deatails = ProductVariation::where('product_id', $product_id)
                     ->with(['variations', 'variations.media'])
                     ->first();

@@ -10,8 +10,8 @@
         <small>Track salon tips, staff commissions, and payouts</small>
     </h1>
     <ol class="breadcrumb">
-        <li><a href="{{ action([\App\Http\Controllers\Restaurant\BookingController::class, 'index']) }}"><i class="fa fa-calendar"></i> @lang('restaurant.bookings')</a></li>
-        <li class="active">Staff Tips</li>
+        <li><a href="{{ action([\App\Http\Controllers\ReportController::class, 'getProfitLoss']) }}"><i class="fa fa-bar-chart"></i> @lang('report.reports')</a></li>
+        <li class="active">@lang('report.staff_tips_report')</li>
     </ol>
 </section>
 
@@ -36,7 +36,7 @@
                     </div>
                 </div>
                 <div class="box-body">
-                    <form method="GET" action="{{ action([\App\Http\Controllers\Restaurant\BookingController::class, 'staffTipsReport']) }}" id="tips_filter_form">
+                    <form method="GET" action="{{ url()->current() }}" id="tips_filter_form">
                         <div class="row">
                             <div class="col-sm-3">
                                 <div class="form-group">

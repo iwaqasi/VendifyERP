@@ -156,7 +156,7 @@
       			</div>
       		@endif
       		@endif
-      		@if($product->type == 'single')
+      		@if($product->type == 'single' || $product->type == 'service')
       			@include('product.partials.single_product_details')
       		@elseif($product->type == 'variable')
       			@include('product.partials.variable_product_details')
