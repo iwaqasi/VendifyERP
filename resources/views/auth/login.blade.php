@@ -104,6 +104,10 @@
 
     <div class="vf-auth-card">
         <div class="vf-auth-card-head">
+            <div style="display: inline-flex; align-items: center; gap: 7px; padding: 6px 14px; border-radius: 9999px; background: linear-gradient(135deg, #ECFDF5 0%, #D1FAE5 100%); border: 1px solid #6EE7B7; color: #065F46; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 14px; box-shadow: 0 1px 3px rgba(16, 185, 129, 0.1);">
+                <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #10B981; box-shadow: 0 0 6px #10B981;"></span>
+                <span>🇰🇼 Kuwait MOCI QAYD &amp; VAT 2027 Ready</span>
+            </div>
             <img class="logo-sm" src="{{ asset('img/vendify-logo-mark.png') }}" alt="{{ config('app.name') }} logo" />
             <h1>@lang('lang_v1.welcome_back')</h1>
             <p>@lang('lang_v1.login_to_your') {{ config('app.name') }}</p>
@@ -165,17 +169,43 @@
             </div>
 
             @if (config('constants.enable_recaptcha'))
-                <div class="row">
-                    <div class="col-md-12">
-                        <div class="form-group">
-                            <div class="g-recaptcha" data-sitekey="{{ config('constants.google_recaptcha_key') }}"></div>
+                @if (!empty(config('constants.google_recaptcha_key')))
+                    <div class="row">
+                        <div class="col-md-12">
+                            <div class="form-group tw-flex tw-justify-center tw-my-3">
+                                <div class="g-recaptcha" data-sitekey="{{ config('constants.google_recaptcha_key') }}"></div>
+                            </div>
                             @if ($errors->has('g-recaptcha-response'))
-                                <span class="text-danger">{{ $errors->first('g-recaptcha-response') }}</span>
+                                <span class="help-block text-danger tw-text-xs tw-text-center tw-block" style="color: #EF4444; font-weight: 600;">
+                                    {{ $errors->first('g-recaptcha-response') }}
+                                </span>
                             @endif
                         </div>
                     </div>
-                </div>
+                @else
+                    @php
+                        $num1 = rand(2, 9);
+                        $num2 = rand(1, 9);
+                        session(['security_captcha_answer' => $num1 + $num2]);
+                    @endphp
+                    <div class="form-group tw-my-3" style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 10px; padding: 12px 14px;">
+                        <label for="security_captcha" class="tw-text-xs tw-font-semibold tw-text-slate-700 tw-flex tw-items-center tw-gap-1.5 tw-mb-1.5" style="font-weight: 600; color: #1E3A5F;">
+                            <i class="fa fa-shield text-primary"></i> Anti-Bot Security: What is <strong>{{ $num1 }} + {{ $num2 }}</strong>?
+                        </label>
+                        <input type="number" name="security_captcha" id="security_captcha" required class="form-control vf-auth-input" placeholder="Enter answer (e.g. {{ $num1 + $num2 }})" style="font-weight: 600; background: #fff;">
+                        @if ($errors->has('security_captcha'))
+                            <span class="help-block text-danger tw-text-xs tw-block tw-mt-1" style="color: #EF4444; font-weight: 600;">
+                                {{ $errors->first('security_captcha') }}
+                            </span>
+                        @endif
+                    </div>
+                @endif
             @endif
+
+            {{-- Invisible honeypot trap to detect and block automated brute force bots --}}
+            <div style="display:none !important;" aria-hidden="true">
+                <input type="text" name="login_extra_field" tabindex="-1" autocomplete="off">
+            </div>
 
             <button type="submit" class="vf-btn-block tw-mt-2">
                 @lang('lang_v1.login')

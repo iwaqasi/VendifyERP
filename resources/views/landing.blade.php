@@ -634,9 +634,9 @@
     {{-- ======================== HERO ======================== --}}
     <section class="lp-hero">
         <div class="lp-hero-content">
-            <div class="lp-hero-badge">
-                <span class="lp-hero-badge-dot"></span>
-                Enterprise POS &amp; ERP Suite
+            <div class="lp-hero-badge" style="background: rgba(16, 185, 129, 0.18); border: 1px solid rgba(52, 211, 153, 0.45); color: #A7F3D0; font-weight: 700;">
+                <span class="lp-hero-badge-dot" style="background: #10B981; box-shadow: 0 0 10px #10B981;"></span>
+                🇰🇼 Kuwait MOCI QAYD &amp; VAT 2027 Certified Ready
             </div>
 
             <h1>
@@ -678,6 +678,50 @@
                 <div class="lp-stat">
                     <div class="lp-stat-num">Multi</div>
                     <div class="lp-stat-label">Location Support</div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    {{-- ======================== KUWAIT COMPLIANCE HIGHLIGHT ======================== --}}
+    <section class="lp-section" style="background: linear-gradient(180deg, #16283F 0%, #1E3A5F 100%); padding: 3.5rem 1.5rem; color: #fff; border-bottom: 1px solid rgba(255,255,255,0.08);">
+        <div class="lp-section-inner" style="max-width: 1150px; margin: 0 auto;">
+            <div style="background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(52, 211, 153, 0.3); border-radius: 20px; padding: 2.5rem; backdrop-filter: blur(12px); box-shadow: 0 20px 40px rgba(0,0,0,0.25);">
+                <div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 2rem;">
+                    <div style="flex: 1; min-width: 300px;">
+                        <div style="display: inline-flex; align-items: center; gap: 8px; padding: 6px 14px; border-radius: 9999px; background: rgba(16, 185, 129, 0.2); border: 1px solid rgba(52, 211, 153, 0.4); color: #A7F3D0; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 1rem;">
+                            <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #10B981; box-shadow: 0 0 8px #10B981;"></span>
+                            🇰🇼 Regulatory Compliance Guaranteed
+                        </div>
+                        <h2 style="font-size: 2rem; font-weight: 800; color: #fff; line-height: 1.25; margin-bottom: 0.75rem;">
+                            Kuwait MOCI QAYD &amp; VAT 2027 Ready
+                        </h2>
+                        <p style="color: rgba(255, 255, 255, 0.85); font-size: 1.05rem; line-height: 1.6; max-width: 620px;">
+                            Built natively for Kuwait businesses. Fully aligned with the Ministry of Commerce &amp; Industry (MOCI) Qayd accounting mandate, certified XBRL electronic balance sheet filings, and upcoming Kuwait VAT 2027 tax automation.
+                        </p>
+                    </div>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; flex: 1; min-width: 320px;">
+                        <div style="background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 12px; padding: 1.25rem;">
+                            <div style="font-size: 1.5rem; margin-bottom: 0.5rem;">🏛️</div>
+                            <div style="font-weight: 700; color: #fff; font-size: 14px;">MOCI QAYD Compliant</div>
+                            <div style="font-size: 12px; color: rgba(255,255,255,0.7); margin-top: 4px;">Automated Kuwait MOCI standard chart of accounts &amp; daily journals.</div>
+                        </div>
+                        <div style="background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 12px; padding: 1.25rem;">
+                            <div style="font-size: 1.5rem; margin-bottom: 0.5rem;">📊</div>
+                            <div style="font-weight: 700; color: #fff; font-size: 14px;">Instant XBRL Export</div>
+                            <div style="font-size: 12px; color: rgba(255,255,255,0.7); margin-top: 4px;">1-click audited electronic financial statement generation for annual filing.</div>
+                        </div>
+                        <div style="background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 12px; padding: 1.25rem;">
+                            <div style="font-size: 1.5rem; margin-bottom: 0.5rem;">🧾</div>
+                            <div style="font-weight: 700; color: #fff; font-size: 14px;">VAT 2027 Automated</div>
+                            <div style="font-size: 12px; color: rgba(255,255,255,0.7); margin-top: 4px;">Pre-configured tax slabs, VAT invoices with QR codes, and return audits.</div>
+                        </div>
+                        <div style="background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 12px; padding: 1.25rem;">
+                            <div style="font-size: 1.5rem; margin-bottom: 0.5rem;">🇰🇼</div>
+                            <div style="font-weight: 700; color: #fff; font-size: 14px;">Bilingual Arabic &amp; English</div>
+                            <div style="font-size: 12px; color: rgba(255,255,255,0.7); margin-top: 4px;">Full RTL Arabic layout with dual-language receipts and invoices.</div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>

@@ -101,10 +101,14 @@ $directories = [
     'app',
     'config',
     'database/migrations',
+    'lang',
     'routes',
     'Modules/Superadmin/Http/Controllers',
     'Modules/Superadmin/Routes',
     'resources/views/layouts',
+    'resources/views/auth',
+    'resources/views/product',
+    'resources/views/taxonomy',
     'resources/views/restaurant/booking',
     'resources/views/business/partials',
     'resources/views/report',
@@ -121,8 +125,11 @@ if (is_dir($projectRoot . '/public/vendify-cms')) {
 
 // Single root files to include
 $singleFiles = [
+    'resources/views/landing.blade.php',
     'public/version.json',
     'public/js/booking-services.js',
+    'public/js/product.js',
+    'public/js/app.js',
     'public/css/vendify.css',
 ];
 foreach ($singleFiles as $sFile) {

@@ -66,6 +66,32 @@
                             @endif
                         @endif
                     </div>
+
+                    <!-- Vendify Executive Hub & Quick Action Bar -->
+                    <div class="tw-mt-4 tw-p-3.5 tw-rounded-xl tw-bg-white/10 tw-backdrop-blur-md tw-border tw-border-white/15 tw-flex tw-flex-wrap tw-items-center tw-justify-between tw-gap-3">
+                        <div class="tw-flex tw-items-center tw-gap-2.5 tw-text-white">
+                            <span class="tw-inline-flex tw-items-center tw-justify-center tw-w-7 tw-h-7 tw-rounded-lg tw-bg-emerald-500/20 tw-text-emerald-300">
+                                <i class="fa fa-shield"></i>
+                            </span>
+                            <span class="tw-text-xs tw-font-semibold tw-tracking-wide tw-uppercase">
+                                Kuwait MOCI Qayd & VAT 2027 Ready
+                            </span>
+                        </div>
+                        <div class="tw-flex tw-items-center tw-gap-2 tw-flex-wrap">
+                            <a href="/vendify-pos/" target="_blank" class="tw-inline-flex tw-items-center tw-gap-1.5 tw-px-3 tw-py-1.5 tw-rounded-lg tw-bg-emerald-500 hover:tw-bg-emerald-600 tw-text-white tw-text-xs tw-font-bold tw-transition-colors">
+                                <i class="fa fa-th"></i> Launch Web POS
+                            </a>
+                            <a href="{{ route('reports.kuwait_xbrl') }}" class="tw-inline-flex tw-items-center tw-gap-1.5 tw-px-3 tw-py-1.5 tw-rounded-lg tw-bg-white/15 hover:tw-bg-white/25 tw-text-white tw-text-xs tw-font-semibold tw-transition-colors">
+                                <i class="fa fa-university"></i> MOCI XBRL Audit
+                            </a>
+                            <a href="{{ route('download.windows') }}" class="tw-inline-flex tw-items-center tw-gap-1.5 tw-px-3 tw-py-1.5 tw-rounded-lg tw-bg-white/15 hover:tw-bg-white/25 tw-text-white tw-text-xs tw-font-semibold tw-transition-colors">
+                                <i class="fa fa-windows"></i> Windows POS (MSIX)
+                            </a>
+                            <a href="{{ route('download.apk') }}" class="tw-inline-flex tw-items-center tw-gap-1.5 tw-px-3 tw-py-1.5 tw-rounded-lg tw-bg-white/15 hover:tw-bg-white/25 tw-text-white tw-text-xs tw-font-semibold tw-transition-colors">
+                                <i class="fa fa-android"></i> Android APK (v{{ config('author.app_version') }})
+                            </a>
+                        </div>
+                    </div>
                     @if (auth()->user()->can('dashboard.data'))
                         @if ($is_admin)
                             <div class="tw-grid tw-grid-cols-1 tw-gap-4 tw-mt-6 sm:tw-grid-cols-2 xl:tw-grid-cols-4 sm:tw-gap-5">

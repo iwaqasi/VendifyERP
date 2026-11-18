@@ -4,18 +4,10 @@ namespace App\Rules;
   
 use Illuminate\Contracts\Validation\Rule;
 use Illuminate\Support\Facades\Http;
-  
+use Illuminate\Support\Facades\Log;
+
 class ReCaptcha implements Rule
 {
-    /**
-     * Create a new rule instance.
-     *
-     * @return void
-     */
-    public function __construct()
-    {
-          
-    }
     /**
      * Determine if the validation rule passes.
      *
@@ -25,13 +17,37 @@ class ReCaptcha implements Rule
      */
     public function passes($attribute, $value)
     {
-        $response = Http::get("https://www.google.com/recaptcha/api/siteverify",[
-            'secret' => config('constants.google_recaptcha_secret'),
-            'response' => $value
-        ]);
-          
-        return $response->json()["success"];
+        if (empty($value)) {
+            return false;
+        }
+
+        $secret = config('constants.google_recaptcha_secret');
+        if (empty($secret)) {
+            // If secret is not set, allow or fallback
+            return true;
+        }
+
+        try {
+            $response = Http::asForm()
+                ->timeout(5)
+                ->post('https://www.google.com/recaptcha/api/siteverify', [
+                    'secret' => $secret,
+                    'response' => $value,
+                    'remoteip' => request()->ip(),
+                ]);
+
+            if ($response->successful()) {
+                return (bool) ($response->json('success') === true);
+            }
+
+            Log::warning('Google reCAPTCHA verification returned non-200 status: ' . $response->status());
+            return false;
+        } catch (\Exception $e) {
+            Log::error('Google reCAPTCHA HTTP error: ' . $e->getMessage());
+            return false;
+        }
     }
+
     /**
      * Get the validation error message.
      *
@@ -39,6 +55,6 @@ class ReCaptcha implements Rule
      */
     public function message()
     {
-        return 'The google recaptcha is required.';
+        return __('Please verify that you are not a robot (reCAPTCHA failed).');
     }
 }

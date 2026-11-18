@@ -44,6 +44,20 @@
                 <h2>{{ __('auth.brand_headline', [], config('app.locale')) }}</h2>
                 <p>{{ __('auth.brand_subline', [], config('app.locale')) }}</p>
 
+                <div style="display: flex; align-items: center; gap: 10px; background: rgba(16, 185, 129, 0.14); border: 1px solid rgba(52, 211, 153, 0.35); border-radius: 12px; padding: 12px 16px; margin: 18px 0; backdrop-filter: blur(8px);">
+                    <div style="width: 32px; height: 32px; border-radius: 8px; background: rgba(16, 185, 129, 0.25); display: flex; align-items: center; justify-content: center; color: #34D399; font-size: 15px; flex-shrink: 0;">
+                        <i class="fa fa-shield"></i>
+                    </div>
+                    <div>
+                        <div style="font-size: 13px; font-weight: 700; color: #A7F3D0; letter-spacing: 0.02em;">
+                            Kuwait MOCI QAYD &amp; VAT 2027 Ready
+                        </div>
+                        <div style="font-size: 11px; color: rgba(255, 255, 255, 0.75); margin-top: 2px;">
+                            Official XBRL electronic reporting &amp; automated VAT compliance
+                        </div>
+                    </div>
+                </div>
+
                 <div class="vf-auth-feature">
                     <span class="vf-auth-feature-icon">
                         <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">

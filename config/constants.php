@@ -34,7 +34,7 @@ return [
     'document_size_limit' => '5000000', //in Bytes,
     'image_size_limit' => '5000000', //in Bytes
 
-    'asset_version' => 616,
+    'asset_version' => 617,
 
     'disable_purchase_in_other_currency' => true,
 
@@ -61,7 +61,7 @@ return [
 
     'google_recaptcha_key' => env('GOOGLE_RECAPTCHA_KEY'),
     'google_recaptcha_secret' => env('GOOGLE_RECAPTCHA_SECRET'),
-    'enable_recaptcha' => env('ENABLE_RECAPTCHA', false),
+    'enable_recaptcha' => env('ENABLE_RECAPTCHA', true),
     // Enable disposable email validation (public registration)
     'do_not_allow_disposable_email' => env('DO_NOT_ALLOW_DISPOSABLE_EMAIL', false),
     
