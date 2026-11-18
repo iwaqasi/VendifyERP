@@ -255,6 +255,13 @@ class SettingsController extends BaseApiController
                 'enable_inline_tax' => $business->enable_inline_tax ?? false,
                 'default_sales_tax' => $business->default_sales_tax,
             ],
+            'kuwait_compliance' => [
+                'cr_number' => $business->kuwait_cr_number,
+                'moci_license' => $business->kuwait_moci_license,
+                'paci_number' => $business->kuwait_paci_number,
+                'enable_xbrl_reporting' => (bool) ($business->enable_xbrl_reporting ?? true),
+                'enable_kuwait_vat_ready' => (bool) ($business->enable_kuwait_vat_ready ?? true),
+            ],
         ]);
     }
 

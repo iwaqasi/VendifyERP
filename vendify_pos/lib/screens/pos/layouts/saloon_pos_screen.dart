@@ -157,10 +157,13 @@ class _SaloonPosScreenState extends ConsumerState<SaloonPosScreen> {
         final receiptPrefix = posSettings['pos_receipt_prefix'] ?? 'INV-POS-';
         prefs.setString('pos_receipt_prefix', receiptPrefix);
         
-        // Filter services (products that are services or have stock disabled)
+        // Filter services: in a saloon, products that are services, non-stock, or 0-price flexible
         _services = _products.where((p) => 
-          p.type == 'service' || p.isServiceProduct || !p.enableStock
+          p.type == 'service' || p.isServiceProduct || !p.enableStock || p.sellPriceIncTax <= 0
         ).toList();
+        if (_services.isEmpty) {
+          _services = List.from(_products);
+        }
         
         _isLoading = false;
       });
@@ -498,7 +501,7 @@ class _SaloonPosScreenState extends ConsumerState<SaloonPosScreen> {
       appointment: appointment,
       posService: _posService,
       staff: _staff,
-      availableServices: (_services.isNotEmpty ? _services : _products).map((p) => {
+      availableServices: _products.map((p) => {
         'id': p.id,
         'name': p.name,
         'price': p.sellPriceIncTax,

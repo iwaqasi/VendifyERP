@@ -378,7 +378,11 @@ class BusinessController extends Controller
                 'min_order_total_for_rp', 'max_rp_per_order', 'redeem_amount_per_unit_rp',
                 'min_order_total_for_redeem', 'min_redeem_point', 'max_redeem_point', 'rp_expiry_period',
                 'rp_expiry_type', 'custom_labels', 'weighing_scale_setting',
-                'code_label_1', 'code_1', 'code_label_2', 'code_2', 'currency_precision', 'quantity_precision', 'business_type', ]); 
+                'code_label_1', 'code_1', 'code_label_2', 'code_2', 'currency_precision', 'quantity_precision', 'business_type',
+                'kuwait_cr_number', 'kuwait_moci_license', 'kuwait_paci_number', ]); 
+
+            $business_details['enable_xbrl_reporting'] = !empty($request->input('enable_xbrl_reporting')) ? 1 : 0;
+            $business_details['enable_kuwait_vat_ready'] = !empty($request->input('enable_kuwait_vat_ready')) ? 1 : 0; 
 
             // Auto-enable modules based on business type
             $businessType = $request->input('business_type');

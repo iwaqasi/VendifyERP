@@ -343,6 +343,11 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/reports/items-report', [ReportController::class, 'itemsReport']);
     Route::get('/reports/get-stock-value', [ReportController::class, 'getStockValue']);
 
+    // Kuwait MOCI XBRL & 2027 VAT Readiness Reports
+    Route::get('/reports/kuwait-xbrl', [\App\Http\Controllers\KuwaitComplianceController::class, 'index'])->name('reports.kuwait_xbrl');
+    Route::get('/reports/kuwait-xbrl/export-json', [\App\Http\Controllers\KuwaitComplianceController::class, 'exportJson'])->name('reports.kuwait_xbrl.json');
+    Route::get('/reports/kuwait-xbrl/export-csv', [\App\Http\Controllers\KuwaitComplianceController::class, 'exportCsv'])->name('reports.kuwait_xbrl.csv');
+
     Route::get('business-location/activate-deactivate/{location_id}', [BusinessLocationController::class, 'activateDeactivateLocation']);
 
     //Business Location Settings...

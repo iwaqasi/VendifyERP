@@ -609,6 +609,11 @@ class AdminSidebarMenu
                                 __('report.tax_report'),
                                 ['icon' => '', 'active' => request()->segment(2) == 'tax-report']
                             );
+                            $sub->url(
+                                action([\App\Http\Controllers\KuwaitComplianceController::class, 'index']),
+                                'Kuwait MOCI XBRL & VAT',
+                                ['icon' => '', 'active' => request()->segment(2) == 'kuwait-xbrl']
+                            );
                         }
                         if (auth()->user()->can('contacts_report.view')) {
                             $sub->url(

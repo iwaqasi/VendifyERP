@@ -107,6 +107,8 @@ $directories = [
     'resources/views/layouts',
     'resources/views/restaurant/booking',
     'resources/views/business/partials',
+    'resources/views/report',
+    'resources/views/home',
     'resources/views/myfatoorah',
     'resources/views/install',
     'public/downloads',
@@ -121,6 +123,7 @@ if (is_dir($projectRoot . '/public/vendify-cms')) {
 $singleFiles = [
     'public/version.json',
     'public/js/booking-services.js',
+    'public/css/vendify.css',
 ];
 foreach ($singleFiles as $sFile) {
     $absSFile = $projectRoot . '/' . str_replace('/', DIRECTORY_SEPARATOR, $sFile);

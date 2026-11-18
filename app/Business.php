@@ -85,6 +85,8 @@ class Business extends Model
         'sms_settings' => 'array',
         'common_settings' => 'array',
         'weighing_scale_setting' => 'array',
+        'enable_xbrl_reporting' => 'boolean',
+        'enable_kuwait_vat_ready' => 'boolean',
     ];
 
     /**
