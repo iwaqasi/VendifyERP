@@ -1200,27 +1200,162 @@ a:hover {
   font-size: 13px !important;
   margin: 0 4px !important;
 }
-.dataTables_wrapper .dataTables_paginate .paginate_button {
-  border-radius: 8px !important;
-  font-weight: 600 !important;
-  font-size: 12.5px !important;
-  padding: 5px 12px !important;
-  margin: 0 2px !important;
-  border: 1px solid #E2E8F0 !important;
-  background: #FFFFFF !important;
-  color: #475569 !important;
-  transition: all 160ms ease !important;
+/* ==========================================================================
+   DataTables Pagination — Unified Connected Button Group (Matches Screenshot 2)
+   ========================================================================== */
+
+/* Hide any empty pagination buttons or spans to eliminate ghost boxes */
+.dataTables_wrapper .dataTables_paginate .paginate_button:empty,
+.dataTables_wrapper .dataTables_paginate a:empty,
+.dataTables_wrapper .dataTables_paginate li:empty,
+.dataTables_wrapper .dataTables_paginate li:has(> a:empty) {
+  display: none !important;
 }
-.dataTables_wrapper .dataTables_paginate .paginate_button:hover {
-  background: #F1F5F9 !important;
-  border-color: #CBD5E1 !important;
-  color: #0F172A !important;
+
+/* Pagination container */
+.dataTables_wrapper .dataTables_paginate {
+  display: inline-flex !important;
+  align-items: center !important;
+  vertical-align: middle !important;
+  padding: 0 !important;
+  margin: 10px 0 !important;
+  border-radius: 4px !important;
+  box-shadow: none !important;
 }
+
+/* Base button styling — joined together with negative left margin */
+.dataTables_wrapper .dataTables_paginate .paginate_button,
+.dataTables_wrapper .dataTables_paginate a.paginate_button {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  position: relative !important;
+  float: left !important;
+  height: 34px !important;
+  min-width: 34px !important;
+  padding: 0 12px !important;
+  margin: 0 0 0 -1px !important;
+  font-size: 13px !important;
+  font-weight: 500 !important;
+  line-height: 1.42857143 !important;
+  color: #337ab7 !important;
+  background-color: #ffffff !important;
+  border: 1px solid #d2d6de !important;
+  border-radius: 0 !important;
+  cursor: pointer !important;
+  text-decoration: none !important;
+  transition: background-color 140ms ease, color 140ms ease, border-color 140ms ease !important;
+  box-sizing: border-box !important;
+}
+
+/* First button: rounded left corners */
+.dataTables_wrapper .dataTables_paginate .paginate_button:first-child,
+.dataTables_wrapper .dataTables_paginate a.paginate_button:first-child {
+  margin-left: 0 !important;
+  border-top-left-radius: 4px !important;
+  border-bottom-left-radius: 4px !important;
+}
+
+/* Last button: rounded right corners */
+.dataTables_wrapper .dataTables_paginate .paginate_button:last-child,
+.dataTables_wrapper .dataTables_paginate a.paginate_button:last-child {
+  border-top-right-radius: 4px !important;
+  border-bottom-right-radius: 4px !important;
+}
+
+/* Hover state on clickable inactive buttons */
+.dataTables_wrapper .dataTables_paginate .paginate_button:not(.current):not(.disabled):hover,
+.dataTables_wrapper .dataTables_paginate a.paginate_button:not(.current):not(.disabled):hover {
+  background-color: #f4f6f9 !important;
+  border-color: #d2d6de !important;
+  color: #23527c !important;
+  z-index: 2 !important;
+}
+
+/* Active / Current page button (Solid blue highlight, exactly like Screenshot 2) */
 .dataTables_wrapper .dataTables_paginate .paginate_button.current,
-.dataTables_wrapper .dataTables_paginate .paginate_button.current:hover {
-  background: var(--vf-primary) !important;
-  border-color: var(--vf-primary) !important;
-  color: #FFFFFF !important;
+.dataTables_wrapper .dataTables_paginate .paginate_button.current:hover,
+.dataTables_wrapper .dataTables_paginate a.paginate_button.current,
+.dataTables_wrapper .dataTables_paginate a.paginate_button.current:hover {
+  background-color: #2E5A8A !important;
+  border-color: #2E5A8A !important;
+  color: #ffffff !important;
+  font-weight: 600 !important;
+  z-index: 3 !important;
+  cursor: default !important;
+}
+
+/* Disabled buttons (Previous / Next when inactive) */
+.dataTables_wrapper .dataTables_paginate .paginate_button.disabled,
+.dataTables_wrapper .dataTables_paginate .paginate_button.disabled:hover,
+.dataTables_wrapper .dataTables_paginate a.paginate_button.disabled,
+.dataTables_wrapper .dataTables_paginate a.paginate_button.disabled:hover {
+  background-color: #ffffff !important;
+  border-color: #d2d6de !important;
+  color: #94a3b8 !important;
+  cursor: not-allowed !important;
+  box-shadow: none !important;
+}
+
+/* Ellipsis span */
+.dataTables_wrapper .dataTables_paginate span.ellipsis {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  height: 34px !important;
+  padding: 0 10px !important;
+  margin: 0 0 0 -1px !important;
+  background-color: #ffffff !important;
+  border: 1px solid #d2d6de !important;
+  color: #94a3b8 !important;
+}
+
+/* Bootstrap <ul class="pagination"> support */
+.dataTables_wrapper .dataTables_paginate ul.pagination {
+  margin: 10px 0 !important;
+  border-radius: 4px !important;
+  display: inline-flex !important;
+}
+.dataTables_wrapper .dataTables_paginate ul.pagination > li {
+  margin: 0 !important;
+  padding: 0 !important;
+  display: inline-flex !important;
+}
+.dataTables_wrapper .dataTables_paginate ul.pagination > li > a,
+.dataTables_wrapper .dataTables_paginate ul.pagination > li > span {
+  height: 34px !important;
+  padding: 6px 12px !important;
+  font-size: 13px !important;
+  margin-left: -1px !important;
+  border: 1px solid #d2d6de !important;
+  color: #337ab7 !important;
+  background-color: #ffffff !important;
+  border-radius: 0 !important;
+}
+.dataTables_wrapper .dataTables_paginate ul.pagination > li:first-child > a,
+.dataTables_wrapper .dataTables_paginate ul.pagination > li:first-child > span {
+  margin-left: 0 !important;
+  border-top-left-radius: 4px !important;
+  border-bottom-left-radius: 4px !important;
+}
+.dataTables_wrapper .dataTables_paginate ul.pagination > li:last-child > a,
+.dataTables_wrapper .dataTables_paginate ul.pagination > li:last-child > span {
+  border-top-right-radius: 4px !important;
+  border-bottom-right-radius: 4px !important;
+}
+.dataTables_wrapper .dataTables_paginate ul.pagination > .active > a,
+.dataTables_wrapper .dataTables_paginate ul.pagination > .active > span {
+  background-color: #2E5A8A !important;
+  border-color: #2E5A8A !important;
+  color: #ffffff !important;
+  font-weight: 600 !important;
+}
+.dataTables_wrapper .dataTables_paginate ul.pagination > .disabled > a,
+.dataTables_wrapper .dataTables_paginate ul.pagination > .disabled > span {
+  color: #94a3b8 !important;
+  background-color: #ffffff !important;
+  border-color: #d2d6de !important;
+  cursor: not-allowed !important;
 }
 
 /* Modern Form Controls */
