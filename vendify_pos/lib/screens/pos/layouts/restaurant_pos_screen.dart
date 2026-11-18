@@ -42,6 +42,8 @@ class _RestaurantPosScreenState extends ConsumerState<RestaurantPosScreen> {
   final List<CartItem> _cartItems = [];
 
   List<Product> _products = [];
+  List<Category> _categories = [];
+  int? _selectedCategoryId;
   bool _isLoading = true;
   String _searchQuery = '';
   String _customerName = 'Dine-in';
@@ -129,6 +131,7 @@ class _RestaurantPosScreenState extends ConsumerState<RestaurantPosScreen> {
       
       setState(() {
         _products = (results[0] is List<Product>) ? results[0] as List<Product> : <Product>[];
+        _categories = (results[1] is List<Category>) ? results[1] as List<Category> : <Category>[];
         if (settings['features'] is Map) {
           _features = Map<String, dynamic>.from(settings['features'] as Map);
         }
@@ -137,6 +140,23 @@ class _RestaurantPosScreenState extends ConsumerState<RestaurantPosScreen> {
       
       _loadTables();
       _loadActiveOrders();
+    } catch (e) {
+      setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _loadProducts() async {
+    setState(() => _isLoading = true);
+    try {
+      final products = await _posService.getProducts(
+        search: _searchQuery.isNotEmpty ? _searchQuery : null,
+        categoryId: _selectedCategoryId,
+        locationId: _locationId,
+      );
+      setState(() {
+        _products = products;
+        _isLoading = false;
+      });
     } catch (e) {
       setState(() => _isLoading = false);
     }
@@ -903,19 +923,112 @@ class _RestaurantPosScreenState extends ConsumerState<RestaurantPosScreen> {
   }
 
   List<Product> get _filteredProducts {
-    if (_searchQuery.isEmpty) return _products;
-    final q = _searchQuery.toLowerCase();
-    return _products.where((p) =>
-      p.name.toLowerCase().contains(q) ||
-      (p.sku?.toLowerCase().contains(q) ?? false) ||
-      (p.barcode?.toLowerCase().contains(q) ?? false)
-    ).toList();
+    var list = _products;
+    if (_selectedCategoryId != null) {
+      list = list.where((p) => p.categoryId == _selectedCategoryId).toList();
+    }
+    if (_searchQuery.isNotEmpty) {
+      final q = _searchQuery.toLowerCase();
+      list = list.where((p) =>
+        p.name.toLowerCase().contains(q) ||
+        (p.sku?.toLowerCase().contains(q) ?? false) ||
+        (p.barcode?.toLowerCase().contains(q) ?? false)
+      ).toList();
+    }
+    return list;
+  }
+
+  Widget _buildCategoryBar() {
+    if (_categories.isEmpty) return const SizedBox.shrink();
+
+    return Container(
+      height: 52,
+      decoration: const BoxDecoration(
+        color: AppTheme.surface,
+        border: Border(bottom: BorderSide(color: AppTheme.border)),
+      ),
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: AppTheme.md, vertical: 8),
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: ChoiceChip(
+              avatar: Icon(
+                Icons.grid_view_rounded,
+                size: 15,
+                color: _selectedCategoryId == null ? Colors.white : AppTheme.textSecondary,
+              ),
+              label: Text(
+                'All (${_products.length})',
+                style: TextStyle(
+                  color: _selectedCategoryId == null ? Colors.white : AppTheme.textPrimary,
+                  fontSize: 12,
+                  fontWeight: _selectedCategoryId == null ? FontWeight.bold : FontWeight.w500,
+                ),
+              ),
+              selected: _selectedCategoryId == null,
+              selectedColor: const Color(0xFF4CAF50),
+              backgroundColor: AppTheme.background,
+              side: BorderSide(
+                color: _selectedCategoryId == null ? const Color(0xFF4CAF50) : AppTheme.border,
+              ),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              onSelected: (_) {
+                if (_selectedCategoryId != null) {
+                  setState(() => _selectedCategoryId = null);
+                  _loadProducts();
+                }
+              },
+            ),
+          ),
+          ..._categories.map((cat) {
+            final isSelected = _selectedCategoryId == cat.id;
+            final count = cat.productCount > 0 
+                ? cat.productCount 
+                : _products.where((p) => p.categoryId == cat.id).length;
+            return Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: ChoiceChip(
+                avatar: Icon(
+                  Icons.restaurant_menu,
+                  size: 15,
+                  color: isSelected ? Colors.white : const Color(0xFF4CAF50),
+                ),
+                label: Text(
+                  count > 0 ? '${cat.name} ($count)' : cat.name,
+                  style: TextStyle(
+                    color: isSelected ? Colors.white : AppTheme.textPrimary,
+                    fontSize: 12,
+                    fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                  ),
+                ),
+                selected: isSelected,
+                selectedColor: const Color(0xFF4CAF50),
+                backgroundColor: AppTheme.background,
+                side: BorderSide(
+                  color: isSelected ? const Color(0xFF4CAF50) : AppTheme.border,
+                ),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                onSelected: (_) {
+                  setState(() {
+                    _selectedCategoryId = isSelected ? null : cat.id;
+                  });
+                  _loadProducts();
+                },
+              ),
+            );
+          }),
+        ],
+      ),
+    );
   }
 
   Widget _buildProductGrid() {
     final displayProducts = _filteredProducts;
     return Column(
       children: [
+        _buildCategoryBar(),
         Container(
           padding: const EdgeInsets.all(AppTheme.md),
           child: TextField(
@@ -924,6 +1037,15 @@ class _RestaurantPosScreenState extends ConsumerState<RestaurantPosScreen> {
             decoration: InputDecoration(
               hintText: 'Search food, drinks, desserts...',
               prefixIcon: const Icon(Icons.search, color: AppTheme.textMuted),
+              suffixIcon: _searchQuery.isNotEmpty
+                  ? IconButton(
+                      icon: const Icon(Icons.clear, size: 18),
+                      onPressed: () {
+                        _searchController.clear();
+                        setState(() => _searchQuery = '');
+                      },
+                    )
+                  : null,
               filled: true,
               fillColor: AppTheme.surface,
               border: OutlineInputBorder(
