@@ -18,8 +18,8 @@ class ApiConfig {
     return 'http://10.0.2.2:8000/api';
   }
 
-  static const String appVersion = '1.1.0';
-  static const String appBuild = '2';
+  static const String appVersion = '1.2.0';
+  static const String appBuild = '3';
 
   static String get downloadApkUrl {
     if (kIsWeb) {
