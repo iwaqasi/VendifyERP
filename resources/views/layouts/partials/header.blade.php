@@ -165,37 +165,6 @@
                     @endcan
                 @endif
 
-                <a href="{{ route('download.apk') }}"
-                    target="_blank"
-                    title="Download Android POS App (v{{ config('author.app_version') }})"
-                    class="tw-inline-flex tw-transition-all tw-duration-200 tw-gap-1.5 tw-bg-emerald-600 hover:tw-bg-emerald-700 tw-py-1.5 tw-px-2.5 tw-rounded-lg tw-items-center tw-justify-center tw-text-sm tw-font-medium tw-ring-1 tw-ring-white/10 tw-text-white hover:tw-text-white">
-                    <svg aria-hidden="true" class="tw-size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="1.75" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
-                        <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
-                        <path d="M4 10l0 6" />
-                        <path d="M20 10l0 6" />
-                        <path d="M7 9h10v8a1 1 0 0 1 -1 1h-8a1 1 0 0 1 -1 -1v-8a5 5 0 0 1 10 0" />
-                        <path d="M8 3l1 2" />
-                        <path d="M16 3l-1 2" />
-                        <path d="M9 18l0 3" />
-                        <path d="M15 18l0 3" />
-                    </svg>
-                    <span class="tw-hidden lg:tw-inline">Download APK</span>
-                    <span class="tw-text-xs tw-bg-emerald-800/80 tw-px-1.5 tw-py-0.5 tw-rounded">v{{ config('author.app_version') }}</span>
-                </a>
-
-                <a href="{{ route('download.windows') }}"
-                    target="_blank"
-                    title="Download Windows POS Desktop App (MSIX v{{ config('author.app_version') }})"
-                    class="tw-inline-flex tw-transition-all tw-duration-200 tw-gap-1.5 tw-bg-sky-600 hover:tw-bg-sky-700 tw-py-1.5 tw-px-2.5 tw-rounded-lg tw-items-center tw-justify-center tw-text-sm tw-font-medium tw-ring-1 tw-ring-white/10 tw-text-white hover:tw-text-white">
-                    <svg aria-hidden="true" class="tw-size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="1.75" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
-                        <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
-                        <path d="M17.8 20l-12 -1.5c-1 -.1 -1.8 -.9 -1.8 -1.9v-9.2c0 -1 .8 -1.8 1.8 -1.9l12 -1.5c1.2 -.1 2.2 .8 2.2 1.9v12.2c0 1.2 -1 2.1 -2.2 1.9z" />
-                        <path d="M12 5l0 14" />
-                        <path d="M4 12l16 0" />
-                    </svg>
-                    <span class="tw-hidden lg:tw-inline">Windows POS</span>
-                    <span class="tw-text-xs tw-bg-sky-800/80 tw-px-1.5 tw-py-0.5 tw-rounded">MSIX</span>
-                </a>
                 @if (Module::has('Repair'))
                     @includeIf('repair::layouts.partials.header')
                 @endif
