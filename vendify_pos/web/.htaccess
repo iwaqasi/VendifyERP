@@ -10,7 +10,20 @@ AddType application/javascript .js
     Header set Cross-Origin-Embedder-Policy "require-corp"
 </FilesMatch>
 
-# Cache static assets
-<FilesMatch "\.(js|wasm|css|png|jpg|svg|ico|json)$">
+# Never cache index, manifest, version, or bootstrap scripts so updates appear instantly
+<FilesMatch "\.(html|json)$">
+    Header set Cache-Control "no-cache, no-store, must-revalidate"
+    Header set Pragma "no-cache"
+    Header set Expires 0
+</FilesMatch>
+
+<FilesMatch "(flutter_bootstrap\.js|flutter_service_worker\.js)$">
+    Header set Cache-Control "no-cache, no-store, must-revalidate"
+    Header set Pragma "no-cache"
+    Header set Expires 0
+</FilesMatch>
+
+# Cache immutable static assets (canvaskit wasm, fonts, icons)
+<FilesMatch "\.(wasm|png|jpg|svg|ico)$">
     Header set Cache-Control "public, max-age=604800"
 </FilesMatch>

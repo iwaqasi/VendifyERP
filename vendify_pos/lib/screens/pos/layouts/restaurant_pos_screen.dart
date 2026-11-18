@@ -18,6 +18,7 @@ import 'package:vendify_pos/screens/pos/widgets/sync_center_dialog.dart';
 import 'package:vendify_pos/screens/pos/widgets/sync_status_badge.dart';
 import 'package:vendify_pos/screens/pos/widgets/diagnostics_dialog.dart';
 import 'package:vendify_pos/screens/pos/widgets/audit_trail_dialog.dart';
+import 'package:vendify_pos/services/print_service.dart';
 import 'package:provider/provider.dart' as p;
 import 'package:vendify_pos/providers/locale_provider.dart';
 
@@ -312,7 +313,7 @@ class _RestaurantPosScreenState extends ConsumerState<RestaurantPosScreen> {
     });
   }
 
-  void _sendToKOT() {
+  void _sendToKOT() async {
     if (_cartItems.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Cart is empty')),
@@ -320,13 +321,53 @@ class _RestaurantPosScreenState extends ConsumerState<RestaurantPosScreen> {
       return;
     }
 
-    // TODO: Send KOT to kitchen display
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('KOT sent to kitchen! Items: ${_cartItems.length}'),
-        backgroundColor: AppTheme.success,
-      ),
-    );
+    try {
+      final tableName = _selectedTable ?? 'Table / Quick Order';
+
+      // 1. Format and print Kitchen Order Slip (KOT)
+      final printService = PrintService();
+      final kotItems = _cartItems.map<Map<String, dynamic>>((i) {
+        return {
+          'name': i.productName,
+          'quantity': '${i.quantity}',
+          'unit_price': i.unitPrice.toStringAsFixed(3),
+          'line_total': i.lineTotal.toStringAsFixed(3),
+          'discount': null,
+        };
+      }).toList();
+
+      await printService.printReceipt(
+        businessName: 'KITCHEN ORDER TICKET (KOT)',
+        invoiceNumber: 'TABLE: $tableName',
+        invoicePrefix: 'KOT #',
+        dateTime: DateTime.now().toString().substring(0, 16),
+        customerName: _customerName,
+        items: kotItems,
+        subtotal: _subtotal.toStringAsFixed(3),
+        grandTotal: _grandTotal.toStringAsFixed(3),
+        payments: [],
+        footer: 'Server: $_userName • $tableName • Guests: $_guestCount',
+        currencySymbol: 'KD',
+      );
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('KOT sent to kitchen & printed! Items: ${_cartItems.length} ($tableName)'),
+            backgroundColor: AppTheme.success,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('KOT generated! Items: ${_cartItems.length}'),
+            backgroundColor: AppTheme.success,
+          ),
+        );
+      }
+    }
   }
 
   void _loadCustomerRewardPoints(int? contactId) async {

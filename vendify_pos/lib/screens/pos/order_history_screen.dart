@@ -126,7 +126,7 @@ class _OrderHistoryScreenState extends ConsumerState<OrderHistoryScreen> {
       child: InkWell(
         borderRadius: BorderRadius.circular(AppTheme.radiusMd),
         onTap: () {
-          // TODO: Open order details
+          _showOrderDetails(order);
         },
         child: Padding(
           padding: const EdgeInsets.all(16),
@@ -286,5 +286,220 @@ class _OrderHistoryScreenState extends ConsumerState<OrderHistoryScreen> {
         ),
       );
     }
+  }
+
+  void _showOrderDetails(dynamic order) {
+    final invoiceNo = order['invoice_no'] ?? '#${order['id']}';
+    final contactName = order['contact'] != null
+        ? order['contact']['name']
+        : 'Walk-in Customer';
+    final contactPhone = order['contact'] != null ? order['contact']['mobile'] : null;
+    final total = (order['final_total'] ?? 0).toDouble();
+    final date = order['transaction_date'] ?? '';
+    final paymentStatus = (order['payment_status'] ?? 'due').toString();
+    final sellLines = (order['sell_lines'] as List?) ?? [];
+    final payments = (order['payment_lines'] as List?) ?? [];
+
+    showDialog(
+      context: context,
+      builder: (dlgCtx) => AlertDialog(
+        backgroundColor: AppTheme.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: AppTheme.primary.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Icon(Icons.receipt_long, color: AppTheme.primary, size: 22),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Order #$invoiceNo',
+                    style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: AppTheme.textPrimary),
+                  ),
+                  Text(
+                    _formatDate(date),
+                    style: const TextStyle(fontSize: 12, color: AppTheme.textMuted),
+                  ),
+                ],
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: (paymentStatus == 'paid' ? AppTheme.success : AppTheme.warning).withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(color: (paymentStatus == 'paid' ? AppTheme.success : AppTheme.warning).withValues(alpha: 0.4)),
+              ),
+              child: Text(
+                paymentStatus.toUpperCase(),
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                  color: paymentStatus == 'paid' ? AppTheme.success : AppTheme.warning,
+                ),
+              ),
+            ),
+          ],
+        ),
+        content: SizedBox(
+          width: 440,
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Customer Information Box
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: AppTheme.background,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: AppTheme.border),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.person_outline, size: 18, color: AppTheme.textSecondary),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          '$contactName${contactPhone != null ? " ($contactPhone)" : ""}',
+                          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppTheme.textPrimary),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+
+                // Order Items
+                const Text(
+                  'Order Items',
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: AppTheme.textPrimary),
+                ),
+                const SizedBox(height: 6),
+                if (sellLines.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text('Sale #$invoiceNo', style: const TextStyle(fontSize: 13, color: AppTheme.textSecondary)),
+                        Text('KD ${total.toStringAsFixed(3)}', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
+                      ],
+                    ),
+                  )
+                else
+                  ...sellLines.map((line) {
+                    final product = line['product'] ?? {};
+                    final name = product['name'] ?? 'Item';
+                    final qty = line['quantity'] ?? 1;
+                    final price = (line['unit_price'] ?? 0).toDouble();
+                    final lineTotal = price * qty;
+
+                    return Container(
+                      padding: const EdgeInsets.symmetric(vertical: 6),
+                      decoration: const BoxDecoration(
+                        border: Border(bottom: BorderSide(color: AppTheme.border, width: 0.5)),
+                      ),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(name, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppTheme.textPrimary)),
+                                Text('$qty x KD ${price.toStringAsFixed(3)}', style: const TextStyle(fontSize: 11, color: AppTheme.textMuted)),
+                              ],
+                            ),
+                          ),
+                          Text(
+                            'KD ${lineTotal.toStringAsFixed(3)}',
+                            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: AppTheme.priceColor),
+                          ),
+                        ],
+                      ),
+                    );
+                  }),
+                const SizedBox(height: 12),
+
+                // Payment Breakdown Box
+                if (payments.isNotEmpty) ...[
+                  const Text(
+                    'Payments',
+                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: AppTheme.textPrimary),
+                  ),
+                  const SizedBox(height: 6),
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: AppTheme.background,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: AppTheme.border),
+                    ),
+                    child: Column(
+                      children: payments.map((p) {
+                        final method = (p['method'] ?? 'cash').toString().toUpperCase();
+                        final amt = (p['amount'] ?? 0).toDouble();
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 2),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(method, style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary, fontWeight: FontWeight.w500)),
+                              Text('KD ${amt.toStringAsFixed(3)}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.textPrimary)),
+                            ],
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                ],
+
+                // Grand Total Box
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: AppTheme.primary.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: AppTheme.primary.withValues(alpha: 0.2)),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text('Total Amount:', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppTheme.textPrimary)),
+                      Text('KD ${total.toStringAsFixed(3)}', style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: AppTheme.primary)),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dlgCtx),
+            child: const Text('Close', style: TextStyle(color: AppTheme.textMuted)),
+          ),
+          ElevatedButton.icon(
+            icon: const Icon(Icons.print, size: 16),
+            label: const Text('Reprint Receipt'),
+            style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primary),
+            onPressed: () {
+              Navigator.pop(dlgCtx);
+              _reprintReceipt(order);
+            },
+          ),
+        ],
+      ),
+    );
   }
 }

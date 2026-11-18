@@ -667,7 +667,7 @@ class _ClinicPosScreenState extends ConsumerState<ClinicPosScreen> {
               width: double.infinity,
               child: ElevatedButton.icon(
                 onPressed: () {
-                  // TODO: Open new appointment dialog
+                  _openNewAppointmentDialog();
                 },
                 icon: const Icon(Icons.add, size: 18),
                 label: const Text('New Appointment'),
@@ -800,6 +800,183 @@ class _ClinicPosScreenState extends ConsumerState<ClinicPosScreen> {
               ],
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  void _openNewAppointmentDialog() {
+    final patientCtrl = TextEditingController();
+    final doctorCtrl = TextEditingController(text: 'Dr. Sarah');
+    final timeCtrl = TextEditingController(text: TimeOfDay.now().format(context));
+    String appointmentType = 'Consultation';
+    String? selectedInsurance;
+    bool hasInsurance = false;
+
+    final insuranceProviders = [
+      'Kuwait Insurance Co.',
+      'Gulf Insurance Group (GIG)',
+      'Warba Insurance',
+      'Ahleia Insurance',
+      'Enaya Healthcare',
+    ];
+
+    showDialog(
+      context: context,
+      builder: (dlgCtx) => StatefulBuilder(
+        builder: (context, setDlgState) => AlertDialog(
+          backgroundColor: AppTheme.surface,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Row(
+            children: [
+              Icon(Icons.calendar_month, color: Color(0xFF00BCD4), size: 24),
+              SizedBox(width: 10),
+              Text('Schedule Clinic Appointment', style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: AppTheme.textPrimary)),
+            ],
+          ),
+          content: SizedBox(
+            width: 420,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Patient Name:*', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.textSecondary)),
+                  const SizedBox(height: 4),
+                  TextField(
+                    controller: patientCtrl,
+                    autofocus: true,
+                    decoration: InputDecoration(
+                      hintText: 'e.g. Abdullah Al-Kandari',
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text('Doctor / Practitioner:*', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.textSecondary)),
+                            const SizedBox(height: 4),
+                            TextField(
+                              controller: doctorCtrl,
+                              decoration: InputDecoration(
+                                hintText: 'Doctor Name',
+                                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text('Time:*', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.textSecondary)),
+                            const SizedBox(height: 4),
+                            TextField(
+                              controller: timeCtrl,
+                              decoration: InputDecoration(
+                                hintText: 'e.g. 11:30 AM',
+                                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  const Text('Consultation Type:', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.textSecondary)),
+                  const SizedBox(height: 4),
+                  DropdownButtonFormField<String>(
+                    initialValue: appointmentType,
+                    decoration: InputDecoration(
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    ),
+                    items: const [
+                      DropdownMenuItem(value: 'Consultation', child: Text('General Consultation')),
+                      DropdownMenuItem(value: 'Follow-up', child: Text('Follow-up Review')),
+                      DropdownMenuItem(value: 'Treatment', child: Text('Clinical Treatment / Procedure')),
+                      DropdownMenuItem(value: 'Dental Checkup', child: Text('Dental Checkup')),
+                      DropdownMenuItem(value: 'Physiotherapy', child: Text('Physiotherapy Session')),
+                    ],
+                    onChanged: (val) {
+                      if (val != null) setDlgState(() => appointmentType = val);
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  CheckboxListTile(
+                    contentPadding: EdgeInsets.zero,
+                    dense: true,
+                    title: const Text('Covered by Health Insurance', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                    value: hasInsurance,
+                    onChanged: (val) {
+                      setDlgState(() {
+                        hasInsurance = val ?? false;
+                        if (hasInsurance && selectedInsurance == null) {
+                          selectedInsurance = insuranceProviders.first;
+                        }
+                      });
+                    },
+                  ),
+                  if (hasInsurance) ...[
+                    const SizedBox(height: 4),
+                    DropdownButtonFormField<String>(
+                      initialValue: selectedInsurance,
+                      decoration: InputDecoration(
+                        labelText: 'Insurance Provider',
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      ),
+                      items: insuranceProviders.map((p) => DropdownMenuItem(value: p, child: Text(p, style: const TextStyle(fontSize: 12)))).toList(),
+                      onChanged: (val) => setDlgState(() => selectedInsurance = val),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(dlgCtx), child: const Text('Cancel')),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF00BCD4)),
+              onPressed: () {
+                final patientName = patientCtrl.text.trim();
+                if (patientName.isEmpty) return;
+
+                Navigator.pop(dlgCtx);
+                final newAppt = {
+                  'id': DateTime.now().millisecondsSinceEpoch,
+                  'patientName': patientName,
+                  'doctor': doctorCtrl.text.trim().isNotEmpty ? doctorCtrl.text.trim() : 'Dr. Sarah',
+                  'time': timeCtrl.text.trim().isNotEmpty ? timeCtrl.text.trim() : '10:00 AM',
+                  'type': appointmentType,
+                  'status': 'waiting',
+                  'insurance': hasInsurance ? selectedInsurance : null,
+                };
+
+                setState(() {
+                  _todayAppointments.insert(0, newAppt);
+                });
+
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Appointment scheduled for $patientName'),
+                    backgroundColor: AppTheme.success,
+                  ),
+                );
+              },
+              child: const Text('Schedule', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            ),
+          ],
         ),
       ),
     );
