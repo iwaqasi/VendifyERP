@@ -109,6 +109,7 @@ $directories = [
     'resources/views/auth',
     'resources/views/product',
     'resources/views/taxonomy',
+    'resources/views/contact',
     'resources/views/restaurant/booking',
     'resources/views/business/partials',
     'resources/views/report',
