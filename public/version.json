@@ -1,10 +1,10 @@
 {
     "app_name": "vendify_pos",
-    "version": "1.2.0",
-    "build_number": "3",
-    "release_date": "2026-11-18 17:35:09",
+    "version": "1.2.1",
+    "build_number": "4",
+    "release_date": "2026-11-22 15:23:15",
     "apk_url": "https://erp.arksoftsolutions.com/download/apk",
     "windows_url": "https://erp.arksoftsolutions.com/download/windows",
     "web_url": "https://erp.arksoftsolutions.com/vendify-pos/",
-    "release_notes": "Vendify POS Release v1.2.0"
+    "release_notes": "Vendify POS Release v1.2.1"
 }

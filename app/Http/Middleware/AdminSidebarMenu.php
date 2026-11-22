@@ -217,7 +217,14 @@ class AdminSidebarMenu
                             $sub->url(
                                 action([\App\Http\Controllers\TaxonomyController::class, 'index']) . '?type=product',
                                 __('category.categories'),
-                                ['icon' => '', 'active' => request()->segment(1) == 'taxonomies' && request()->get('type') == 'product']
+                                ['icon' => '', 'active' => request()->segment(1) == 'taxonomies' && request()->get('type') == 'product' && request()->segment(2) != 'import']
+                            );
+                        }
+                        if (auth()->user()->can('category.create')) {
+                            $sub->url(
+                                action([\App\Http\Controllers\TaxonomyController::class, 'getImportTaxonomies']) . '?type=product',
+                                __('lang_v1.import') . ' ' . __('category.categories'),
+                                ['icon' => '', 'active' => request()->segment(1) == 'taxonomies' && request()->segment(2) == 'import']
                             );
                         }
                         if (auth()->user()->can('brand.view') || auth()->user()->can('brand.create')) {

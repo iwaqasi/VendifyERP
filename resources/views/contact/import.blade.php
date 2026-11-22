@@ -31,12 +31,14 @@
         <div class="col-sm-12">
             @component('components.widget', ['class' => 'box-primary'])
                 {!! Form::open(['url' => action([\App\Http\Controllers\ContactController::class, 'postImportContacts']), 'method' => 'post', 'enctype' => 'multipart/form-data' ]) !!}
+                    <input type="hidden" name="type" value="{{ request()->get('type', 'customer') }}">
                     <div class="row">
                         <div class="col-sm-6">
                         <div class="col-sm-8">
                             <div class="form-group">
                                 {!! Form::label('name', __( 'product.file_to_import' ) . ':') !!}
-                                {!! Form::file('contacts_csv', ['accept'=> '.xls', 'required' => 'required']); !!}
+                                {!! Form::file('contacts_csv', ['accept'=> '.xlsx, .xls, .csv', 'required' => 'required']); !!}
+                                <small class="text-muted">Accepts .xlsx, .xls, or .csv files</small>
                               </div>
                         </div>
                         <div class="col-sm-4">
@@ -50,7 +52,10 @@
                 <br><br>
                 <div class="row">
                     <div class="col-sm-4">
-                        <a href="{{ asset('files/import_contacts_csv_template.xls') }}" class="tw-dw-btn tw-dw-btn-success tw-text-white" download><i class="fa fa-download"></i> @lang('lang_v1.download_template_file')</a>
+                        <a href="{{ action([\App\Http\Controllers\ContactController::class, 'downloadTemplate']) . '?type=' . request()->get('type', 'customer') }}" class="tw-dw-btn tw-dw-btn-success tw-text-white" download><i class="fa fa-download"></i> @lang('lang_v1.download_template_file') (Excel)</a>
+                    </div>
+                    <div class="col-sm-4">
+                        <a href="{{ action([\App\Http\Controllers\ContactController::class, 'downloadExcel']) . '?type=' . request()->get('type') }}" class="tw-dw-btn tw-dw-btn-info tw-text-white" download><i class="fa fa-file-excel-o"></i> @lang('lang_v1.download_excel') (Current Contacts)</a>
                     </div>
                 </div>
             @endcomponent

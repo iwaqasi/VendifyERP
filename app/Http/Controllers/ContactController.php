@@ -6,6 +6,8 @@ use App\Business;
 use App\BusinessLocation;
 use App\Contact;
 use App\CustomerGroup;
+use App\Exports\ContactsExport;
+use App\Exports\ContactTemplateExport;
 use App\Notifications\CustomerNotification;
 use App\PurchaseLine;
 use App\Transaction;
@@ -1023,6 +1025,36 @@ class ContactController extends Controller
     }
 
     /**
+     * Download Excel of Contacts (Suppliers / Customers)
+     */
+    public function downloadExcel(Request $request)
+    {
+        $type = $request->get('type');
+        if ($type == 'supplier' && ! auth()->user()->can('supplier.view') && ! auth()->user()->can('supplier.view_own')) {
+            abort(403, 'Unauthorized action.');
+        } elseif ($type == 'customer' && ! auth()->user()->can('customer.view') && ! auth()->user()->can('customer.view_own')) {
+            abort(403, 'Unauthorized action.');
+        }
+
+        $business_id = request()->session()->get('user.business_id');
+        $label = $type ? ucfirst($type) . 's' : 'Contacts';
+        $filename = $label . '-' . date('Y-m-d') . '.xlsx';
+
+        return Excel::download(new ContactsExport($type, $business_id), $filename);
+    }
+
+    /**
+     * Download Template for Contacts Import
+     */
+    public function downloadTemplate(Request $request)
+    {
+        $type = $request->get('type', 'customer');
+        $filename = ($type ? ucfirst($type) . '_' : '') . 'import_template.xlsx';
+
+        return Excel::download(new ContactTemplateExport($type), $filename);
+    }
+
+    /**
      * Imports contacts
      *
      * @param  \Illuminate\Http\Request
@@ -1046,196 +1078,232 @@ class ContactController extends Controller
             if ($request->hasFile('contacts_csv')) {
                 $file = $request->file('contacts_csv');
                 $parsed_array = Excel::toArray([], $file);
-                //Remove header row
-                $imported_data = array_splice($parsed_array[0], 1);
+
+                if (empty($parsed_array) || empty($parsed_array[0])) {
+                    throw new \Exception(__('lang_v1.file_empty'));
+                }
+
+                $sheet = $parsed_array[0];
+                $header = array_shift($sheet);
 
                 $business_id = $request->session()->get('user.business_id');
                 $user_id = $request->session()->get('user.id');
 
-                $formated_data = [];
+                $default_type = $request->get('type', 'customer');
+                if (!in_array($default_type, ['customer', 'supplier', 'both'])) {
+                    $default_type = 'customer';
+                }
 
-                $is_valid = true;
-                $error_msg = '';
+                // Check if file has named header columns
+                $has_named_headers = false;
+                $col_map = [];
+                if (!empty($header)) {
+                    foreach ($header as $idx => $raw_h) {
+                        $h = strtolower(trim((string)$raw_h));
+                        if (str_contains($h, 'contact type') || str_contains($h, 'type')) $col_map['type'] = $idx;
+                        elseif (str_contains($h, 'contact id') || str_contains($h, 'contact_id')) $col_map['contact_id'] = $idx;
+                        elseif (str_contains($h, 'business') || str_contains($h, 'company')) $col_map['supplier_business_name'] = $idx;
+                        elseif (str_contains($h, 'prefix')) $col_map['prefix'] = $idx;
+                        elseif (str_contains($h, 'first') && str_contains($h, 'name')) $col_map['first_name'] = $idx;
+                        elseif (str_contains($h, 'middle') && str_contains($h, 'name')) $col_map['middle_name'] = $idx;
+                        elseif (str_contains($h, 'last') && str_contains($h, 'name')) $col_map['last_name'] = $idx;
+                        elseif (str_contains($h, 'full') || (str_contains($h, 'name') && !isset($col_map['first_name']))) $col_map['name'] = $idx;
+                        elseif (str_contains($h, 'alt') && (str_contains($h, 'phone') || str_contains($h, 'mobile') || str_contains($h, 'contact') || str_contains($h, 'number'))) $col_map['alternate_number'] = $idx;
+                        elseif (str_contains($h, 'landline')) $col_map['landline'] = $idx;
+                        elseif (str_contains($h, 'mobile') || str_contains($h, 'phone')) $col_map['mobile'] = $idx;
+                        elseif (str_contains($h, 'email')) $col_map['email'] = $idx;
+                        elseif (str_contains($h, 'tax')) $col_map['tax_number'] = $idx;
+                        elseif (str_contains($h, 'opening') || str_contains($h, 'balance')) $col_map['opening_balance'] = $idx;
+                        elseif (str_contains($h, 'term') && (str_contains($h, 'period') || str_contains($h, 'type'))) $col_map['pay_term_type'] = $idx;
+                        elseif (str_contains($h, 'pay') || str_contains($h, 'term')) $col_map['pay_term_number'] = $idx;
+                        elseif (str_contains($h, 'credit') || str_contains($h, 'limit')) $col_map['credit_limit'] = $idx;
+                        elseif (str_contains($h, 'address 1') || str_contains($h, 'line 1') || str_contains($h, 'address_line_1')) $col_map['address_line_1'] = $idx;
+                        elseif (str_contains($h, 'address 2') || str_contains($h, 'line 2') || str_contains($h, 'address_line_2')) $col_map['address_line_2'] = $idx;
+                        elseif (str_contains($h, 'city')) $col_map['city'] = $idx;
+                        elseif (str_contains($h, 'state')) $col_map['state'] = $idx;
+                        elseif (str_contains($h, 'country')) $col_map['country'] = $idx;
+                        elseif (str_contains($h, 'zip') || str_contains($h, 'postal')) $col_map['zip_code'] = $idx;
+                        elseif (str_contains($h, 'dob') || str_contains($h, 'birth')) $col_map['dob'] = $idx;
+                    }
+                    if (isset($col_map['type']) || isset($col_map['first_name']) || isset($col_map['name']) || isset($col_map['supplier_business_name'])) {
+                        $has_named_headers = true;
+                    }
+                }
+
+                $formated_data = [];
+                $contact_types_map = [
+                    '1' => 'customer',
+                    '2' => 'supplier',
+                    '3' => 'both',
+                    'customer' => 'customer',
+                    'supplier' => 'supplier',
+                    'both' => 'both',
+                ];
 
                 DB::beginTransaction();
-                foreach ($imported_data as $key => $value) {
-                    //Check if 27 no. of columns exists
-                    if (count($value) != 27) {
-                        $is_valid = false;
-                        $error_msg = 'Number of columns mismatch';
-                        break;
-                    }
 
-                    $row_no = $key + 1;
+                foreach ($sheet as $key => $value) {
+                    $row_no = $key + 2;
                     $contact_array = [];
 
-                    //Check contact type
-                    $contact_type = '';
-                    $contact_types = [
-                        1 => 'customer',
-                        2 => 'supplier',
-                        3 => 'both',
-                    ];
-                    if (! empty($value[0])) {
-                        $contact_type = strtolower(trim($value[0]));
-                        if (in_array($contact_type, [1, 2, 3])) {
-                            $contact_array['type'] = $contact_types[$contact_type];
-                            $contact_type = $contact_types[$contact_type];
-                        } else {
-                            $is_valid = false;
-                            $error_msg = "Invalid contact type $contact_type in row no. $row_no";
-                            break;
+                    if ($has_named_headers) {
+                        // Header-based extraction
+                        $raw_type = isset($col_map['type']) ? strtolower(trim((string)($value[$col_map['type']] ?? ''))) : '';
+                        $contact_type = $contact_types_map[$raw_type] ?? $default_type;
+                        $contact_array['type'] = $contact_type;
+
+                        $contact_array['prefix'] = isset($col_map['prefix']) ? trim((string)($value[$col_map['prefix']] ?? '')) : '';
+                        $first_name = isset($col_map['first_name']) ? trim((string)($value[$col_map['first_name']] ?? '')) : '';
+                        $middle_name = isset($col_map['middle_name']) ? trim((string)($value[$col_map['middle_name']] ?? '')) : '';
+                        $last_name = isset($col_map['last_name']) ? trim((string)($value[$col_map['last_name']] ?? '')) : '';
+                        $full_name = isset($col_map['name']) ? trim((string)($value[$col_map['name']] ?? '')) : '';
+                        $biz_name = isset($col_map['supplier_business_name']) ? trim((string)($value[$col_map['supplier_business_name']] ?? '')) : '';
+
+                        if (empty($first_name) && !empty($full_name)) {
+                            $parts = explode(' ', $full_name, 2);
+                            $first_name = $parts[0];
+                            $last_name = $parts[1] ?? '';
+                        } elseif (empty($first_name) && !empty($biz_name)) {
+                            $first_name = $biz_name;
                         }
+
+                        if (empty($first_name) && empty($biz_name)) {
+                            continue; // Skip entirely blank rows
+                        }
+
+                        $contact_array['first_name'] = $first_name ?: $biz_name;
+                        $contact_array['middle_name'] = $middle_name;
+                        $contact_array['last_name'] = $last_name;
+                        $contact_array['name'] = trim($full_name ?: implode(' ', array_filter([$contact_array['prefix'], $first_name, $middle_name, $last_name])));
+                        if (!empty($biz_name)) {
+                            $contact_array['supplier_business_name'] = $biz_name;
+                        }
+
+                        $c_id = isset($col_map['contact_id']) ? trim((string)($value[$col_map['contact_id']] ?? '')) : '';
+                        if (!empty($c_id)) {
+                            $contact_array['contact_id'] = $c_id;
+                        }
+
+                        $contact_array['mobile'] = isset($col_map['mobile']) ? trim((string)($value[$col_map['mobile']] ?? '')) : '';
+                        $contact_array['alternate_number'] = isset($col_map['alternate_number']) ? trim((string)($value[$col_map['alternate_number']] ?? '')) : '';
+                        $contact_array['landline'] = isset($col_map['landline']) ? trim((string)($value[$col_map['landline']] ?? '')) : '';
+                        $contact_array['email'] = isset($col_map['email']) ? trim((string)($value[$col_map['email']] ?? '')) : '';
+                        $contact_array['tax_number'] = isset($col_map['tax_number']) ? trim((string)($value[$col_map['tax_number']] ?? '')) : '';
+                        $contact_array['opening_balance'] = isset($col_map['opening_balance']) ? trim((string)($value[$col_map['opening_balance']] ?? '')) : '';
+                        $contact_array['pay_term_number'] = isset($col_map['pay_term_number']) ? trim((string)($value[$col_map['pay_term_number']] ?? '')) : '';
+                        $contact_array['pay_term_type'] = isset($col_map['pay_term_type']) ? strtolower(trim((string)($value[$col_map['pay_term_type']] ?? ''))) : '';
+                        $contact_array['credit_limit'] = isset($col_map['credit_limit']) ? trim((string)($value[$col_map['credit_limit']] ?? '')) : '';
+                        $contact_array['address_line_1'] = isset($col_map['address_line_1']) ? trim((string)($value[$col_map['address_line_1']] ?? '')) : '';
+                        $contact_array['address_line_2'] = isset($col_map['address_line_2']) ? trim((string)($value[$col_map['address_line_2']] ?? '')) : '';
+                        $contact_array['city'] = isset($col_map['city']) ? trim((string)($value[$col_map['city']] ?? '')) : '';
+                        $contact_array['state'] = isset($col_map['state']) ? trim((string)($value[$col_map['state']] ?? '')) : '';
+                        $contact_array['country'] = isset($col_map['country']) ? trim((string)($value[$col_map['country']] ?? '')) : '';
+                        $contact_array['zip_code'] = isset($col_map['zip_code']) ? trim((string)($value[$col_map['zip_code']] ?? '')) : '';
                     } else {
-                        $is_valid = false;
-                        $error_msg = "Contact type is required in row no. $row_no";
-                        break;
-                    }
-
-                    $contact_array['prefix'] = $value[1];
-                    //Check contact name
-                    if (! empty($value[2])) {
-                        $contact_array['first_name'] = $value[2];
-                    } else {
-                        $is_valid = false;
-                        $error_msg = "First name is required in row no. $row_no";
-                        break;
-                    }
-                    $contact_array['middle_name'] = $value[3];
-                    $contact_array['last_name'] = $value[4];
-                    $contact_array['name'] = implode(' ', [$contact_array['prefix'], $contact_array['first_name'], $contact_array['middle_name'], $contact_array['last_name']]);
-
-                    //Check business name
-                    if (! empty(trim($value[5]))) {
-                        $contact_array['supplier_business_name'] = $value[5];
-                    }
-
-                    //Check supplier fields
-                    if (in_array($contact_type, ['supplier', 'both'])) {
-                        //Check pay term
-                        if (trim($value[9]) != '') {
-                            $contact_array['pay_term_number'] = trim($value[9]);
-                        } else {
-                            $is_valid = false;
-                            $error_msg = "Pay term is required in row no. $row_no";
-                            break;
+                        // Positional extraction (pad up to 27 columns for safe indexing)
+                        while (count($value) < 27) {
+                            $value[] = '';
                         }
 
-                        //Check pay period
-                        $pay_term_type = strtolower(trim($value[10]));
-                        if (in_array($pay_term_type, ['days', 'months'])) {
-                            $contact_array['pay_term_type'] = $pay_term_type;
-                        } else {
-                            $is_valid = false;
-                            $error_msg = "Pay term period is required in row no. $row_no";
-                            break;
+                        $raw_type = strtolower(trim((string)$value[0]));
+                        $contact_type = $contact_types_map[$raw_type] ?? $default_type;
+                        $contact_array['type'] = $contact_type;
+
+                        $contact_array['prefix'] = trim((string)$value[1]);
+                        $first_name = trim((string)$value[2]);
+                        $biz_name = trim((string)$value[5]);
+
+                        if (empty($first_name) && empty($biz_name)) {
+                            continue; // Skip empty row
                         }
-                    }
 
-                    //Check contact ID
-                    if (! empty(trim($value[6]))) {
-                        $count = Contact::where('business_id', $business_id)
-                                    ->where('contact_id', $value[6])
-                                    ->count();
+                        $contact_array['first_name'] = $first_name ?: $biz_name;
+                        $contact_array['middle_name'] = trim((string)$value[3]);
+                        $contact_array['last_name'] = trim((string)$value[4]);
+                        $contact_array['name'] = trim(implode(' ', array_filter([$contact_array['prefix'], $contact_array['first_name'], $contact_array['middle_name'], $contact_array['last_name']])));
 
-                        if ($count == 0) {
-                            $contact_array['contact_id'] = $value[6];
-                        } else {
-                            $is_valid = false;
-                            $error_msg = "Contact ID already exists in row no. $row_no";
-                            break;
+                        if (!empty($biz_name)) {
+                            $contact_array['supplier_business_name'] = $biz_name;
                         }
+
+                        $contact_array['contact_id'] = trim((string)$value[6]);
+                        $contact_array['tax_number'] = trim((string)$value[7]);
+                        $contact_array['opening_balance'] = trim((string)$value[8]);
+                        $contact_array['pay_term_number'] = trim((string)$value[9]);
+                        $contact_array['pay_term_type'] = strtolower(trim((string)$value[10]));
+                        $contact_array['credit_limit'] = trim((string)$value[11]);
+                        $contact_array['email'] = trim((string)$value[12]);
+                        $contact_array['mobile'] = trim((string)$value[13]);
+                        $contact_array['alternate_number'] = trim((string)$value[14]);
+                        $contact_array['landline'] = trim((string)$value[15]);
+                        $contact_array['city'] = trim((string)$value[16]);
+                        $contact_array['state'] = trim((string)$value[17]);
+                        $contact_array['country'] = trim((string)$value[18]);
+                        $contact_array['address_line_1'] = trim((string)$value[19]);
+                        $contact_array['address_line_2'] = trim((string)$value[20]);
+                        $contact_array['zip_code'] = trim((string)$value[21]);
+                        $contact_array['dob'] = trim((string)$value[22]);
+                        $contact_array['custom_field1'] = trim((string)$value[23]);
+                        $contact_array['custom_field2'] = trim((string)$value[24]);
+                        $contact_array['custom_field3'] = trim((string)$value[25]);
+                        $contact_array['custom_field4'] = trim((string)$value[26]);
                     }
 
-                    //Tax number
-                    if (! empty(trim($value[7]))) {
-                        $contact_array['tax_number'] = $value[7];
+                    // Normalize and validate pay_term_type
+                    if (!in_array($contact_array['pay_term_type'], ['days', 'months'])) {
+                        $contact_array['pay_term_type'] = null;
+                        $contact_array['pay_term_number'] = null;
                     }
 
-                    //Check opening balance
-                    if (! empty(trim($value[8])) && $value[8] != 0) {
-                        $contact_array['opening_balance'] = trim($value[8]);
+                    // Normalize email
+                    if (!empty($contact_array['email']) && !filter_var($contact_array['email'], FILTER_VALIDATE_EMAIL)) {
+                        $contact_array['email'] = null;
                     }
-
-                    //Check credit limit
-                    if (trim($value[11]) != '' && in_array($contact_type, ['customer', 'both'])) {
-                        $contact_array['credit_limit'] = trim($value[11]);
-                    }
-
-                    //Check email
-                    if (! empty(trim($value[12]))) {
-                        if (filter_var(trim($value[12]), FILTER_VALIDATE_EMAIL)) {
-                            $contact_array['email'] = $value[12];
-                        } else {
-                            $is_valid = false;
-                            $error_msg = "Invalid email id in row no. $row_no";
-                            break;
-                        }
-                    }
-
-                    //Mobile number
-                    if (! empty(trim($value[13]))) {
-                        $contact_array['mobile'] = $value[13];
-                    } else {
-                        $is_valid = false;
-                        $error_msg = "Mobile number is required in row no. $row_no";
-                        break;
-                    }
-
-                    //Alt contact number
-                    $contact_array['alternate_number'] = $value[14];
-
-                    //Landline
-                    $contact_array['landline'] = $value[15];
-
-                    //City
-                    $contact_array['city'] = $value[16];
-
-                    //State
-                    $contact_array['state'] = $value[17];
-
-                    //Country
-                    $contact_array['country'] = $value[18];
-
-                    //address_line_1
-                    $contact_array['address_line_1'] = $value[19];
-                    //address_line_2
-                    $contact_array['address_line_2'] = $value[20];
-                    $contact_array['zip_code'] = $value[21];
-                    $contact_array['dob'] = $value[22];
-
-                    //Cust fields
-                    $contact_array['custom_field1'] = $value[23];
-                    $contact_array['custom_field2'] = $value[24];
-                    $contact_array['custom_field3'] = $value[25];
-                    $contact_array['custom_field4'] = $value[26];
 
                     $formated_data[] = $contact_array;
-                }
-                if (! $is_valid) {
-                    throw new \Exception($error_msg);
                 }
 
                 if (! empty($formated_data)) {
                     foreach ($formated_data as $contact_data) {
                         $ref_count = $this->transactionUtil->setAndGetReferenceCount('contacts');
-                        //Set contact id if empty
-                        if (empty($contact_data['contact_id'])) {
+
+                        // Check if contact_id is provided and if it already exists
+                        if (!empty($contact_data['contact_id'])) {
+                            $exists = Contact::where('business_id', $business_id)
+                                ->where('contact_id', $contact_data['contact_id'])
+                                ->exists();
+                            if ($exists) {
+                                // If already exists, update basic details or generate new ID
+                                $contact = Contact::where('business_id', $business_id)
+                                    ->where('contact_id', $contact_data['contact_id'])
+                                    ->first();
+                                $contact->update(array_filter([
+                                    'name' => $contact_data['name'],
+                                    'supplier_business_name' => $contact_data['supplier_business_name'] ?? null,
+                                    'mobile' => $contact_data['mobile'] ?: null,
+                                    'email' => $contact_data['email'] ?: null,
+                                    'city' => $contact_data['city'] ?: null,
+                                    'country' => $contact_data['country'] ?: null,
+                                ]));
+                                continue;
+                            }
+                        } else {
                             $contact_data['contact_id'] = $this->commonUtil->generateReferenceNumber('contacts', $ref_count);
                         }
 
                         $opening_balance = 0;
-                        if (isset($contact_data['opening_balance'])) {
-                            $opening_balance = $contact_data['opening_balance'];
-                            unset($contact_data['opening_balance']);
+                        if (isset($contact_data['opening_balance']) && is_numeric($contact_data['opening_balance'])) {
+                            $opening_balance = (float)$contact_data['opening_balance'];
                         }
+                        unset($contact_data['opening_balance']);
 
                         $contact_data['business_id'] = $business_id;
                         $contact_data['created_by'] = $user_id;
+                        $contact_data['contact_status'] = 'active';
 
                         $contact = Contact::create($contact_data);
 
-                        if (! empty($opening_balance)) {
+                        if ($opening_balance > 0) {
                             $this->transactionUtil->createOpeningBalanceTransaction($business_id, $contact->id, $opening_balance, $user_id, false);
                         }
 
@@ -1244,7 +1312,7 @@ class ContactController extends Controller
                 }
 
                 $output = ['success' => 1,
-                    'msg' => __('product.file_imported_successfully'),
+                    'msg' => __('product.file_imported_successfully') . ' (' . count($formated_data) . ' contacts processed)',
                 ];
 
                 DB::commit();
@@ -1259,7 +1327,7 @@ class ContactController extends Controller
 
             return redirect()->route('contacts.import')->with('notification', $output);
         }
-        $type = ! empty($contact->type) && $contact->type != 'both' ? $contact->type : 'supplier';
+        $type = ! empty($contact->type) && $contact->type != 'both' ? $contact->type : ($request->get('type') ?: 'customer');
 
         return redirect()->action([\App\Http\Controllers\ContactController::class, 'index'], ['type' => $type])->with('status', $output);
     }

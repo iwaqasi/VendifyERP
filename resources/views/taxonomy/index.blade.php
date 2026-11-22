@@ -40,15 +40,35 @@
                 $can_add = false;
             }
         @endphp
-        @component('components.widget', ['class' => 'box-solid', 'can_add' => $can_add])
-            @if ($can_add)
-                @slot('tool')
-                    <div class="box-tools">
-                        {{-- <button type="button" class="btn btn-block btn-primary btn-modal" 
-                    data-href="{{action([\App\Http\Controllers\TaxonomyController::class, 'create'])}}?type={{request()->get('type')}}" 
-                    data-container=".category_modal">
-                    <i class="fa fa-plus"></i> @lang( 'messages.add' )</button> --}}
-                        <a class="tw-dw-btn tw-bg-gradient-to-r tw-from-indigo-600 tw-to-blue-500 tw-font-bold tw-text-white tw-border-none tw-rounded-full btn-modal"
+        @component('components.widget', ['class' => 'box-solid', 'can_add' => true])
+            @slot('tool')
+                <div class="box-tools">
+                    @if ($can_add)
+                        <a class="tw-dw-btn tw-bg-gradient-to-r tw-from-emerald-600 tw-to-teal-500 tw-font-bold tw-text-white tw-border-none tw-rounded-full pull-right tw-m-1"
+                            href="{{action([\App\Http\Controllers\TaxonomyController::class, 'getImportTaxonomies'])}}?type={{request()->get('type', 'product')}}">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
+                                stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                                class="icon icon-tabler icons-tabler-outline icon-tabler-upload">
+                                <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+                                <path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2 -2v-2" />
+                                <path d="M7 9l5 -5l5 5" />
+                                <path d="M12 4l0 12" />
+                            </svg> @lang('lang_v1.import')
+                        </a>
+                    @endif
+                    <a class="tw-dw-btn tw-bg-gradient-to-r tw-from-sky-600 tw-to-cyan-500 tw-font-bold tw-text-white tw-border-none tw-rounded-full pull-right tw-m-1"
+                        href="{{action([\App\Http\Controllers\TaxonomyController::class, 'downloadExcel'])}}?type={{request()->get('type', 'product')}}">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
+                            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                            class="icon icon-tabler icons-tabler-outline icon-tabler-download">
+                            <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+                            <path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2 -2v-2" />
+                            <path d="M7 11l5 5l5 -5" />
+                            <path d="M12 4l0 12" />
+                        </svg> @lang('lang_v1.download_excel')
+                    </a>
+                    @if ($can_add)
+                        <a class="tw-dw-btn tw-bg-gradient-to-r tw-from-indigo-600 tw-to-blue-500 tw-font-bold tw-text-white tw-border-none tw-rounded-full pull-right tw-m-1 btn-modal"
                             data-href="{{action([\App\Http\Controllers\TaxonomyController::class, 'create'])}}?type={{request()->get('type')}}" 
                             data-container=".category_modal">
                             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
@@ -59,9 +79,9 @@
                                 <path d="M5 12l14 0" />
                             </svg> @lang('messages.add')
                         </a>
-                    </div>
-                @endslot
-            @endif
+                    @endif
+                </div>
+            @endslot
 
             <div class="table-responsive">
                 <table class="table table-bordered table-striped" id="category_table">

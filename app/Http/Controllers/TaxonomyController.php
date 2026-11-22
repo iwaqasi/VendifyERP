@@ -3,8 +3,12 @@
 namespace App\Http\Controllers;
 
 use App\Category;
+use App\Exports\CategoriesExport;
+use App\Exports\CategoryTemplateExport;
 use App\Utils\ModuleUtil;
+use Excel;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Yajra\DataTables\Facades\DataTables;
 
 class TaxonomyController extends Controller
@@ -358,6 +362,230 @@ class TaxonomyController extends Controller
 
             return view('taxonomy.ajax_index')
                 ->with(compact('module_category_data', 'category_type'));
+        }
+    }
+
+    /**
+     * Download Excel of Categories
+     */
+    public function downloadExcel(Request $request)
+    {
+        $category_type = $request->get('type', 'product');
+        if ($category_type == 'product' && ! auth()->user()->can('category.view') && ! auth()->user()->can('category.create')) {
+            abort(403, 'Unauthorized action.');
+        }
+
+        $business_id = request()->session()->get('user.business_id');
+        $filename = 'categories-' . $category_type . '-' . date('Y-m-d') . '.xlsx';
+
+        return Excel::download(new CategoriesExport($category_type, $business_id), $filename);
+    }
+
+    /**
+     * Download Categories Import Template
+     */
+    public function downloadTemplate(Request $request)
+    {
+        $filename = 'categories_import_template.xlsx';
+        return Excel::download(new CategoryTemplateExport, $filename);
+    }
+
+    /**
+     * Show category import page
+     */
+    public function getImportTaxonomies(Request $request)
+    {
+        $category_type = $request->get('type', 'product');
+        if ($category_type == 'product' && ! auth()->user()->can('category.create')) {
+            abort(403, 'Unauthorized action.');
+        }
+
+        $module_category_data = $this->moduleUtil->getTaxonomyData($category_type);
+
+        return view('taxonomy.import')->with(compact('module_category_data', 'category_type'));
+    }
+
+    /**
+     * Process category import
+     */
+    public function postImportTaxonomies(Request $request)
+    {
+        $category_type = $request->get('type', 'product');
+        if ($category_type == 'product' && ! auth()->user()->can('category.create')) {
+            abort(403, 'Unauthorized action.');
+        }
+
+        try {
+            ini_set('max_execution_time', 0);
+
+            if ($request->hasFile('taxonomy_csv')) {
+                $file = $request->file('taxonomy_csv');
+                $parsed_array = Excel::toArray([], $file);
+
+                if (empty($parsed_array) || empty($parsed_array[0])) {
+                    throw new \Exception(__('lang_v1.file_empty'));
+                }
+
+                $sheet = $parsed_array[0];
+                $header = array_shift($sheet);
+
+                $business_id = $request->session()->get('user.business_id');
+                $user_id = $request->session()->get('user.id');
+
+                // Map column indices (case-insensitive detection)
+                $name_idx = 0;
+                $code_idx = 1;
+                $desc_idx = 2;
+                $parent_name_idx = 3;
+                $parent_code_idx = 4;
+
+                if (!empty($header)) {
+                    foreach ($header as $idx => $colName) {
+                        $col = strtolower(trim((string)$colName));
+                        if (str_contains($col, 'parent') && (str_contains($col, 'code') || str_contains($col, 'sku'))) {
+                            $parent_code_idx = $idx;
+                        } elseif (str_contains($col, 'parent')) {
+                            $parent_name_idx = $idx;
+                        } elseif (str_contains($col, 'code') || str_contains($col, 'short')) {
+                            $code_idx = $idx;
+                        } elseif (str_contains($col, 'desc')) {
+                            $desc_idx = $idx;
+                        } elseif (str_contains($col, 'name') || str_contains($col, 'category')) {
+                            $name_idx = $idx;
+                        }
+                    }
+                }
+
+                $imported_count = 0;
+                $updated_count = 0;
+
+                DB::beginTransaction();
+
+                // Pass 1: Import main categories (rows with empty parent)
+                $sub_category_rows = [];
+                foreach ($sheet as $row) {
+                    $name = trim((string)($row[$name_idx] ?? ''));
+                    if (empty($name)) {
+                        continue;
+                    }
+
+                    $code = trim((string)($row[$code_idx] ?? ''));
+                    $desc = trim((string)($row[$desc_idx] ?? ''));
+                    $parent_name = trim((string)($row[$parent_name_idx] ?? ''));
+                    $parent_code = trim((string)($row[$parent_code_idx] ?? ''));
+
+                    if (!empty($parent_name) || !empty($parent_code)) {
+                        $sub_category_rows[] = [
+                            'name' => $name,
+                            'code' => $code,
+                            'desc' => $desc,
+                            'parent_name' => $parent_name,
+                            'parent_code' => $parent_code,
+                        ];
+                        continue;
+                    }
+
+                    // Check if existing main category exists
+                    $existing = Category::where('business_id', $business_id)
+                        ->where('category_type', $category_type)
+                        ->where('parent_id', 0)
+                        ->where(function ($q) use ($name, $code) {
+                            $q->where('name', $name);
+                            if (!empty($code)) {
+                                $q->orWhere('short_code', $code);
+                            }
+                        })
+                        ->first();
+
+                    if ($existing) {
+                        if (!empty($code)) $existing->short_code = $code;
+                        if (!empty($desc)) $existing->description = $desc;
+                        $existing->save();
+                        $updated_count++;
+                    } else {
+                        Category::create([
+                            'name' => $name,
+                            'business_id' => $business_id,
+                            'short_code' => $code ?: null,
+                            'parent_id' => 0,
+                            'category_type' => $category_type,
+                            'description' => $desc ?: null,
+                            'created_by' => $user_id,
+                        ]);
+                        $imported_count++;
+                    }
+                }
+
+                // Pass 2: Import sub-categories (linking to parents)
+                foreach ($sub_category_rows as $sub) {
+                    $name = $sub['name'];
+                    $code = $sub['code'];
+                    $desc = $sub['desc'];
+                    $p_name = $sub['parent_name'];
+                    $p_code = $sub['parent_code'];
+
+                    // Find parent
+                    $parent = Category::where('business_id', $business_id)
+                        ->where('category_type', $category_type)
+                        ->where('parent_id', 0)
+                        ->where(function ($q) use ($p_name, $p_code) {
+                            if (!empty($p_name)) $q->where('name', $p_name);
+                            if (!empty($p_code)) $q->orWhere('short_code', $p_code);
+                        })
+                        ->first();
+
+                    $parent_id = $parent ? $parent->id : 0;
+
+                    $existingSub = Category::where('business_id', $business_id)
+                        ->where('category_type', $category_type)
+                        ->where('parent_id', $parent_id)
+                        ->where(function ($q) use ($name, $code) {
+                            $q->where('name', $name);
+                            if (!empty($code)) {
+                                $q->orWhere('short_code', $code);
+                            }
+                        })
+                        ->first();
+
+                    if ($existingSub) {
+                        if (!empty($code)) $existingSub->short_code = $code;
+                        if (!empty($desc)) $existingSub->description = $desc;
+                        $existingSub->save();
+                        $updated_count++;
+                    } else {
+                        Category::create([
+                            'name' => $name,
+                            'business_id' => $business_id,
+                            'short_code' => $code ?: null,
+                            'parent_id' => $parent_id,
+                            'category_type' => $category_type,
+                            'description' => $desc ?: null,
+                            'created_by' => $user_id,
+                        ]);
+                        $imported_count++;
+                    }
+                }
+
+                DB::commit();
+
+                $output = [
+                    'success' => 1,
+                    'msg' => "Import successful! Created: $imported_count, Updated: $updated_count.",
+                ];
+
+                return redirect()->action([\App\Http\Controllers\TaxonomyController::class, 'index'], ['type' => $category_type])
+                    ->with('status', $output);
+            }
+        } catch (\Exception $e) {
+            DB::rollBack();
+            \Log::emergency('File:' . $e->getFile() . 'Line:' . $e->getLine() . 'Message:' . $e->getMessage());
+
+            $output = [
+                'success' => 0,
+                'msg' => $e->getMessage(),
+            ];
+
+            return redirect()->back()->with('notification', $output);
         }
     }
 }

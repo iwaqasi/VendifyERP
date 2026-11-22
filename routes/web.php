@@ -191,6 +191,8 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::post('/contacts/send-ledger', [ContactController::class, 'sendLedger']);
     Route::get('/contacts/import', [ContactController::class, 'getImportContacts'])->name('contacts.import');
     Route::post('/contacts/import', [ContactController::class, 'postImportContacts']);
+    Route::get('/contacts/download-excel', [ContactController::class, 'downloadExcel']);
+    Route::get('/contacts/download-template', [ContactController::class, 'downloadTemplate']);
     Route::post('/contacts/check-contacts-id', [ContactController::class, 'checkContactId']);
 
     Route::post('/contacts/check-tax-number', [ContactController::class, 'checkTaxNumber']);
@@ -198,6 +200,10 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/contacts/customers', [ContactController::class, 'getCustomers']);
     Route::resource('contacts', ContactController::class);
 
+    Route::get('/taxonomies/import', [TaxonomyController::class, 'getImportTaxonomies'])->name('taxonomies.import');
+    Route::post('/taxonomies/import', [TaxonomyController::class, 'postImportTaxonomies']);
+    Route::get('/taxonomies/download-excel', [TaxonomyController::class, 'downloadExcel']);
+    Route::get('/taxonomies/download-template', [TaxonomyController::class, 'downloadTemplate']);
     Route::get('taxonomies-ajax-index-page', [TaxonomyController::class, 'getTaxonomyIndexPage']);
     Route::resource('taxonomies', TaxonomyController::class);
 
