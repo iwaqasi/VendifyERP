@@ -110,6 +110,7 @@ $directories = [
     'resources/views/product',
     'resources/views/taxonomy',
     'resources/views/contact',
+    'resources/views/import_products',
     'resources/views/restaurant/booking',
     'resources/views/business/partials',
     'resources/views/report',
@@ -117,6 +118,7 @@ $directories = [
     'resources/views/myfatoorah',
     'resources/views/install',
     'public/downloads',
+    'public/files',
     'public/vendify-pos',
 ];
 
