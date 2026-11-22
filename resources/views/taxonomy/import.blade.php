@@ -38,7 +38,7 @@
     <div class="row">
         <div class="col-sm-12">
             @component('components.widget', ['class' => 'box-primary'])
-                {!! Form::open(['action' => [\App\Http\Controllers\TaxonomyController::class, 'postImportTaxonomies'], 'method' => 'post', 'enctype' => 'multipart/form-data' ]) !!}
+                {!! Form::open(['url' => action([\App\Http\Controllers\TaxonomyController::class, 'postImportTaxonomies']), 'method' => 'post', 'enctype' => 'multipart/form-data' ]) !!}
                     <input type="hidden" name="type" value="{{ $category_type }}">
                     <div class="row">
                         <div class="col-sm-6">
